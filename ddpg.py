@@ -1,12 +1,15 @@
+# Copyright 2017 Karol Kuna
+
 import tensorflow as tf
 import numpy as np
 from replaybuffer import ReplayBuffer
-from neuralnetwork import NeuralNetwork, TargetNeuralNetwork, SquaredLossOptimizer, MaxOutputOptimizer, NeuralNetworkComposition
+from neuralnetwork import NeuralNetwork, TargetNeuralNetwork
+from optimizers import SquaredLossOptimizer, MaxOutputOptimizer
 
 class DDPG:
     def __init__(self, actor_network, q_network, discount_factor=0.9, batch_size=128, replay_buffer_size=100000, learning_rate=0.0001, actor_target_approach_rate=0.999, q_target_approach_rate=0.999):
-        self.state_dim = q_network.input_dims[0]
-        self.action_dim = q_network.input_dims[1]
+        self.state_dim = actor_network.input_dims[0]
+        self.action_dim = actor_network.output_dim
         self.discount_factor = discount_factor
         self.batch_size = batch_size
         self.replay_buffer_size = replay_buffer_size
@@ -15,23 +18,31 @@ class DDPG:
         self.q_target_approach_rate = q_target_approach_rate
 
         self.actor_network = actor_network
-        self.actor_target_network = TargetNeuralNetwork(self.actor_network, self.actor_target_approach_rate)
+        self.actor_target_network = TargetNeuralNetwork("Actor_target", self.actor_network, self.actor_target_approach_rate)
 
         self.q_network = q_network
-        self.q_target_network = TargetNeuralNetwork(self.q_network, self.q_target_approach_rate)
+        self.q_target_network = TargetNeuralNetwork("Q_target", self.q_network, self.q_target_approach_rate)
         self.q_optimizer = SquaredLossOptimizer(q_network, tf.train.AdamOptimizer(learning_rate))
 
-        self.actor_critic_network = NeuralNetworkComposition([actor_network, q_network], [1])
-        self.actor_optimizer = MaxOutputOptimizer(self.actor_critic_network, tf.train.AdamOptimizer(learning_rate), actor_network.trainable_parameters)
+        self.actor_critic_network = NeuralNetwork("ActorCritic", q_network.session, [self.state_dim])
+        actor_copy = actor_network.copy("ActorCritic_actor")
+        actor_copy.set_input_layer(0, self.actor_critic_network.get_input_layer(0))
+        actor_copy.set_parameters(self.actor_network.get_parameters())
+        q_target_copy = q_network.copy("ActorCritic_q")
+        q_target_copy.set_input_layer(0, self.actor_critic_network.get_input_layer(0))
+        q_target_copy.set_input_layer(1, actor_copy.get_output_layer())
+        q_target_copy.set_parameters(self.q_target_network.get_parameters())
+        self.actor_critic_network.compile(q_target_copy.get_output_layer())
+        self.actor_optimizer = MaxOutputOptimizer(self.actor_critic_network, tf.train.AdamOptimizer(learning_rate), self.actor_network.get_parameters())
 
         self.replay_buffer = ReplayBuffer(replay_buffer_size, self.state_dim, self.action_dim)
 
     def train(self):
         state_batch, action_batch, reward_batch, next_state_batch, done_batch, ids = self.replay_buffer.get_batch(self.batch_size)
 
-        # q_target_batch = reward_batch + q_target_network(next_state_batch, actor_target(next_state_batch))
-        next_action_batch = self.actor_target_network.predict([next_state_batch])
-        next_q_value_batch = self.q_target_network.predict([next_state_batch, next_action_batch])
+        # q_target_batch = reward_batch + discount_factor * q_target_network(next_state_batch, actor_target(next_state_batch))
+        next_action_batch = self.actor_target_network.predict_batch([next_state_batch])
+        next_q_value_batch = self.q_target_network.predict_batch([next_state_batch, next_action_batch])
         q_target_batch = []
         for i in range(self.batch_size): 
             if done_batch[i]:
@@ -47,7 +58,7 @@ class DDPG:
         self.actor_target_network.approach_source_parameters()
 
     def action(self, state):
-        action = self.actor_network.predict([state])
+        action = self.actor_network.predict(state)
         return action
 
     def noisy_action(self, state, mean=0, stddev=1.0):
