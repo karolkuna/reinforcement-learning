@@ -29,6 +29,9 @@ class INeuralNetwork:
     def get_parameters(self):
         pass
 
+    def copy(self, new_name, reuse_parameters=False):
+        pass
+
     def predict_batch(self, inputs):
         pass
 
@@ -125,7 +128,10 @@ class NeuralNetwork(INeuralNetwork):
     def get_parameters(self):
         return self.parameters
 
-    def copy(self, new_name):
+    def copy(self, new_name, reuse_parameters=False):
+        if not self.compiled:
+            raise Exception("Cannot make a copy of uncompiled network!")
+
         new_network = NeuralNetwork(new_name, self.session, self.input_dims)
         for layer in new_network.input_layers:
             new_network.layers.append(layer)
@@ -138,6 +144,9 @@ class NeuralNetwork(INeuralNetwork):
             new_network.layers.append(layer_copy)
             if layer == self.output_layer:
                 new_network.output_layer = layer_copy
+
+        if reuse_parameters:
+            new_network.set_parameters(self.parameters)
 
         return new_network
 
@@ -195,10 +204,13 @@ class TargetNeuralNetwork(INeuralNetwork):
         return self.target_network.is_compiled()
 
     def set_parameters(self, parameters):
-        pass
+        raise Exception("Changing parameters of a target network is not supported!")
 
     def get_parameters(self):
         return self.target_parameters
+
+    def copy(self, new_name, reuse_parameters=False):
+        return self.target_network.copy(new_name, reuse_parameters)
 
     def predict_batch(self, inputs):
         return self.target_network.predict_batch(inputs)

@@ -25,13 +25,11 @@ class DDPG:
         self.q_optimizer = SquaredLossOptimizer(q_network, tf.train.AdamOptimizer(learning_rate))
 
         self.actor_critic_network = NeuralNetwork("ActorCritic", q_network.session, [self.state_dim])
-        actor_copy = actor_network.copy("ActorCritic_actor")
+        actor_copy = actor_network.copy("ActorCritic_actor", reuse_parameters=True)
         actor_copy.set_input_layer(0, self.actor_critic_network.get_input_layer(0))
-        actor_copy.set_parameters(self.actor_network.get_parameters())
-        q_target_copy = q_network.copy("ActorCritic_q")
+        q_target_copy = q_network.copy("ActorCritic_q", reuse_parameters=True)
         q_target_copy.set_input_layer(0, self.actor_critic_network.get_input_layer(0))
         q_target_copy.set_input_layer(1, actor_copy.get_output_layer())
-        q_target_copy.set_parameters(self.q_target_network.get_parameters())
         self.actor_critic_network.compile(q_target_copy.get_output_layer())
         self.actor_optimizer = MaxOutputOptimizer(self.actor_critic_network, tf.train.AdamOptimizer(learning_rate), self.actor_network.get_parameters())
 
