@@ -102,7 +102,7 @@ class FullyConnectedLayer(Layer):
             self.W = self.parameters[0]
             self.b = self.parameters[1]
 
-        self.output = self.activation_fn(tf.matmul(self.input_layers[0].get_output(), self.W) + self.b, name=self.name)
+        self.output = self.activation_fn(tf.matmul(self.input_layers[0].get_output(), self.W) + self.b, name=(network.name + "_" + self.name))
 
     def copy(self, new_name, input_layers):
         return FullyConnectedLayer(new_name, self.size, input_layers[0], self.activation_fn, self.weights_init_stddev, self.bias_init_stddev)
@@ -129,3 +129,56 @@ class ConcatLayer(Layer):
 
     def copy(self, new_name, input_layers):
         return ConcatLayer(new_name, input_layers)
+
+
+class AdditionLayer(Layer):
+    def __init__(self, name, input_layers):
+        if (len(input_layers) != 2):
+            raise Exception("Addition layers requires 2 inputs!")
+
+        if (input_layers[0].get_size() != input_layers[1].get_size()):
+            raise Exception("Addition layer inputs must have same dimension!")
+
+        self.id = None
+        self.name = name
+        self.size = input_layers[0].get_size()
+        self.parameters = None
+        self.input_layers = input_layers
+        self.output = None
+
+    def get_parameter_count(self):
+        return 0
+
+    def compile(self, network):
+        if self.output is not None:
+            raise Exception("Layer " + self.name +  " is already compiled!")
+
+        self.output = tf.add(self.input_layers[0].get_output(), self.input_layers[1].get_output(), name=(network.name + "_" + self.name))
+        self.parameters = []
+
+    def copy(self, new_name, input_layers):
+        return AdditionLayer(new_name, input_layers)
+
+
+class ScalarMultiplyLayer(Layer):
+    def __init__(self, name, input_layer, scalar):
+        self.id = None
+        self.name = name
+        self.size = input_layer.get_size()
+        self.parameters = None
+        self.input_layers = [input_layer]
+        self.output = None
+        self.scalar = scalar
+
+    def get_parameter_count(self):
+        return 0
+
+    def compile(self, network):
+        if self.output is not None:
+            raise Exception("Layer " + self.name +  " is already compiled!")
+
+        self.output = tf.scalar_mul(self.scalar, self.input_layers[0].get_output())
+        self.parameters = []
+
+    def copy(self, new_name, input_layers):
+        return ScalarMultiplyLayer(new_name, self.input_layers[0], self.scalar)
