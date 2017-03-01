@@ -56,7 +56,7 @@ class DDPG:
         self.actor_target_network.approach_source_parameters()
 
     def action(self, state):
-        action = self.actor_network.predict(state)
+        action = self.actor_network.predict([state])
         return action
 
     def noisy_action(self, state, mean=0, stddev=1.0):
