@@ -124,7 +124,7 @@ class ConcatLayer(Layer):
         if self.output is not None:
             raise Exception("Layer " + self.name +  " is already compiled!")
 
-        self.output = tf.concat(1, [l.get_output() for l in self.input_layers], name=(network.name + "_" + self.name))
+        self.output = tf.concat(axis=1, values=[l.get_output() for l in self.input_layers], name=(network.name + "_" + self.name))
         self.parameters = []
 
     def copy(self, new_name, input_layers):
