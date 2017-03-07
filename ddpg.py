@@ -35,6 +35,8 @@ class DDPG:
 
         self.replay_buffer = ReplayBuffer(replay_buffer_size, self.state_dim, self.action_dim)
 
+        self.actor_network.session.run(tf.global_variables_initializer())
+
     def train(self):
         state_batch, action_batch, reward_batch, next_state_batch, done_batch, ids = self.replay_buffer.get_batch(self.batch_size)
 

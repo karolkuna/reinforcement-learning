@@ -44,6 +44,8 @@ class AMC:
 
         self.replay_buffer = ReplayBuffer(replay_buffer_size, self.state_dim, self.action_dim)
 
+        self.actor_network.session.run(tf.global_variables_initializer())
+
     def create_actor_critic_network(self, name, actor_network, model_network, reward_network, value_network, forward_steps):
         actor_critic = NeuralNetwork(name, self.actor_network.session, [self.state_dim])
         state_input = actor_critic.get_input_layer(0)
