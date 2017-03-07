@@ -92,6 +92,13 @@ class AMC:
         self.value_target_network.approach_source_parameters()
         self.actor_target_network.approach_source_parameters()
 
+    def train_model(self):
+        state_batch, action_batch, reward_batch, next_state_batch, done_batch, ids = self.replay_buffer.get_batch(self.batch_size)
+        self.model_optimizer.train([state_batch, action_batch], next_state_batch)
+
+    def reset_replay_buffer(self):
+        self.replay_buffer = ReplayBuffer(self.replay_buffer_size, self.state_dim, self.action_dim)
+
     def action(self, state):
         action = self.actor_network.predict([state])
         return action
