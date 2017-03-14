@@ -5,6 +5,7 @@ import numpy as np
 from replaybuffer import ReplayBuffer
 from neuralnetwork import NeuralNetwork, TargetNeuralNetwork
 from optimizers import SquaredLossOptimizer, MaxOutputOptimizer
+from actorcritic import create_actor_critic_network
 
 class DDPG:
     def __init__(self, actor_network, q_network, discount_factor=0.9, batch_size=128, replay_buffer_size=100000, learning_rate=0.0001, actor_target_approach_rate=0.999, q_target_approach_rate=0.999):
@@ -24,13 +25,7 @@ class DDPG:
         self.q_target_network = TargetNeuralNetwork("Q_target", self.q_network, self.q_target_approach_rate)
         self.q_optimizer = SquaredLossOptimizer(q_network, tf.train.AdamOptimizer(learning_rate))
 
-        self.actor_critic_network = NeuralNetwork("ActorCritic", q_network.session, [self.state_dim])
-        actor_copy = actor_network.copy("ActorCritic_actor", reuse_parameters=True)
-        actor_copy.set_input_layer(0, self.actor_critic_network.get_input_layer(0))
-        q_target_copy = q_network.copy("ActorCritic_q", reuse_parameters=True)
-        q_target_copy.set_input_layer(0, self.actor_critic_network.get_input_layer(0))
-        q_target_copy.set_input_layer(1, actor_copy.get_output_layer())
-        self.actor_critic_network.compile(q_target_copy.get_output_layer())
+        self.actor_critic_network = create_actor_critic_network("ActorCritic", actor_network, self.q_target_network)
         self.actor_optimizer = MaxOutputOptimizer(self.actor_critic_network, tf.train.AdamOptimizer(learning_rate), self.actor_network.get_parameters())
 
         self.replay_buffer = ReplayBuffer(replay_buffer_size, self.state_dim, self.action_dim)

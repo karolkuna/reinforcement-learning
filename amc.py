@@ -3,9 +3,9 @@
 import tensorflow as tf
 import numpy as np
 from replaybuffer import ReplayBuffer
-from neuralnetwork import NeuralNetwork, TargetNeuralNetwork
+from neuralnetwork import TargetNeuralNetwork
 from optimizers import SquaredLossOptimizer, MaxOutputOptimizer
-from layers import ScalarMultiplyLayer, AdditionLayer
+from actorcritic import create_actor_model_critic_network
 
 class AMC:
     def __init__(self, actor_network, model_network, reward_network, value_network, forward_steps=1, discount_factor=0.9, batch_size=128, replay_buffer_size=100000, learning_rate=0.0001, actor_target_approach_rate=0.999, value_target_approach_rate=0.999):
@@ -14,6 +14,7 @@ class AMC:
 
         self.state_dim = actor_network.input_dims[0]
         self.action_dim = actor_network.output_dim
+        self.forward_steps = 1
         self.discount_factor = discount_factor
         self.batch_size = batch_size
         self.replay_buffer_size = replay_buffer_size
@@ -34,10 +35,10 @@ class AMC:
         self.value_target_network = TargetNeuralNetwork(value_network.name + "_target", value_network, value_target_approach_rate)
         self.value_optimizer = SquaredLossOptimizer(value_network, tf.train.AdamOptimizer(learning_rate))
 
-        self.actor_ac_network = self.create_actor_critic_network(
+        self.actor_ac_network = create_actor_model_critic_network(
             "Actor_AC", actor_network, model_network, reward_network, self.value_target_network, 1 # TODO: should actor learn from multiple forward steps too?
         )
-        self.value_ac_network = self.create_actor_critic_network(
+        self.value_ac_network = create_actor_model_critic_network(
             "Value_AC", self.actor_target_network, model_network, reward_network, self.value_target_network, forward_steps
         )
 
@@ -49,48 +50,9 @@ class AMC:
 
         self.actor_network.session.run(tf.global_variables_initializer())
 
-    def create_actor_critic_network(self, name, actor_network, model_network, reward_network, value_network, forward_steps):
-        actor_critic = NeuralNetwork(name, self.actor_network.session, [self.state_dim])
-        state_input = actor_critic.get_input_layer(0)
-        discounted_rewards_sum_pred = None
-        current_state = state_input
-
-        for step in range(forward_steps):
-            actor = actor_network.copy(name + "_actor_" + str(step), reuse_parameters=True)
-            actor.set_input_layer(0, state_input)
-            action_pred = actor.get_output_layer()
-
-            model = model_network.copy(name + "_model_" + str(step), reuse_parameters=True)
-            model.set_input_layer(0, state_input)
-            model.set_input_layer(1, action_pred)
-            next_state_pred = model.get_output_layer()
-            current_state = next_state_pred
-
-            reward = reward_network.copy(name + "_reward_" + str(step), reuse_parameters=True)
-            reward.set_input_layer(0, state_input)
-            reward.set_input_layer(1, action_pred)
-            reward_pred = reward.get_output_layer()
-
-            if step == 0:
-                discounted_rewards_sum_pred = reward_pred
-            else:
-                discounted_reward_pred = ScalarMultiplyLayer("discounted_reward_" + str(step), reward_pred, pow(self.discount_factor, step + 1))
-                discounted_rewards_sum_pred = AdditionLayer("discounted_rewards_sum_" + str(step), [discounted_rewards_sum_pred, discounted_reward_pred])
-
-        value = value_network.copy(name + "_value", reuse_parameters=True)
-        value.set_input_layer(0, current_state)
-        value_pred = value.get_output_layer()
-
-        discounted_value_pred = ScalarMultiplyLayer("discounted_value", value_pred, pow(self.discount_factor, forward_steps))
-        expected_return = AdditionLayer("expected_return", [discounted_value_pred, discounted_rewards_sum_pred])
-
-        actor_critic.compile(expected_return)
-        return actor_critic
-
     def train(self):
         state_batch, action_batch, reward_batch, next_state_batch, done_batch, ids = self.replay_buffer.get_batch(self.batch_size)
 
-        # value_target_batch = reward_network(state_batch, actor_target(state_batch)) + discount_factor * value_target_network(model_network(next_state_batch, actor_target(next_state_batch)))
         value_target_batch = self.value_ac_network.predict_batch([state_batch])
 
         for i in range(self.batch_size): 
