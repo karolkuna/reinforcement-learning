@@ -35,11 +35,11 @@ class AMC:
         self.value_target_network = TargetNeuralNetwork(value_network.name + "_target", value_network, value_target_approach_rate)
         self.value_optimizer = SquaredLossOptimizer(value_network, tf.train.AdamOptimizer(learning_rate))
 
-        self.actor_ac_network = create_actor_model_critic_network(
-            "Actor_AC", actor_network, model_network, reward_network, self.value_target_network, 1 # TODO: should actor learn from multiple forward steps too?
+        self.actor_ac_network, _actors, _models, _rewards, _values = create_actor_model_critic_network(
+            "Actor_AC", actor_network, model_network, reward_network, self.value_target_network, self.discount_factor, 1, False # TODO: should actor learn from multiple forward steps too?
         )
-        self.value_ac_network = create_actor_model_critic_network(
-            "Value_AC", self.actor_target_network, model_network, reward_network, self.value_target_network, forward_steps
+        self.value_ac_network, _actors, _models, _rewards, _values = create_actor_model_critic_network(
+            "Value_AC", self.actor_target_network, model_network, reward_network, self.value_target_network, self.discount_factor, forward_steps, False
         )
 
         self.actor_optimizer = MaxOutputOptimizer(
@@ -50,28 +50,30 @@ class AMC:
 
         self.actor_network.session.run(tf.global_variables_initializer())
 
-    def train(self):
+    def train(self, train_actor=True, train_model=True, train_reward=True, train_value=True):
         state_batch, action_batch, reward_batch, next_state_batch, done_batch, ids = self.replay_buffer.get_batch(self.batch_size)
 
-        value_target_batch = self.value_ac_network.predict_batch([state_batch])
+        if train_actor:
+            self.actor_optimizer.train([state_batch])
+            self.actor_target_network.approach_source_parameters()
 
-        for i in range(self.batch_size): 
-            if done_batch[i]:
-                value_target_batch[i] = reward_batch[i] # TODO: when forward_steps > 1, episode ends are not handled properly
+        if train_model:
+            self.model_optimizer.train([state_batch, action_batch], next_state_batch)
 
-        value_target_batch = np.resize(value_target_batch, [self.batch_size, 1])
+        if train_reward:
+            self.reward_optimizer.train([state_batch, action_batch], reward_batch)
 
-        self.value_optimizer.train([state_batch], value_target_batch)
-        self.model_optimizer.train([state_batch, action_batch], next_state_batch)
-        self.reward_optimizer.train([state_batch, action_batch], reward_batch)
-        self.actor_optimizer.train([state_batch])
+        if train_value:
+            value_target_batch = self.value_ac_network.predict_batch([state_batch])
 
-        self.value_target_network.approach_source_parameters()
-        self.actor_target_network.approach_source_parameters()
+            for i in range(self.batch_size):
+                if done_batch[i]:
+                    value_target_batch[i] = reward_batch[i] # TODO: when forward_steps > 1, episode ends are not handled properly
 
-    def train_model(self):
-        state_batch, action_batch, reward_batch, next_state_batch, done_batch, ids = self.replay_buffer.get_batch(self.batch_size)
-        self.model_optimizer.train([state_batch, action_batch], next_state_batch)
+            value_target_batch = np.resize(value_target_batch, [self.batch_size, 1])
+
+            self.value_optimizer.train([state_batch], value_target_batch)
+            self.value_target_network.approach_source_parameters()
 
     def reset_replay_buffer(self):
         self.replay_buffer = ReplayBuffer(self.replay_buffer_size, self.state_dim, self.action_dim)
