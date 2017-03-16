@@ -88,16 +88,20 @@ class NeuralNetwork(INeuralNetwork):
         self.layers.append(layer)
         self.connections.append([l.get_id() for l in layer.get_input_layers()])
 
-    def compile(self, output):
+    def compile(self, output_layer, unconnected_layers=None):
         if self.compiled:
             raise Exception("Network is already compiled!")
 
-        self.output_layer = output
-        self.output_dim = output.get_size()
+        self.output_layer = output_layer
+        self.output_dim = output_layer.get_size()
 
         self.layers = []
         # search network backwards from output to find all connected layers
-        self.explore_layer_inputs(output)
+        self.explore_layer_inputs(output_layer)
+
+        if unconnected_layers:
+            for l in unconnected_layers:
+                self.explore_layer_inputs(l)
 
         for input_layer in self.input_layers:
             if input_layer.get_id() is None:
@@ -159,6 +163,10 @@ class NeuralNetwork(INeuralNetwork):
     def predict(self, inputs):
         return self.predict_batch([[i] for i in inputs])[0]
 
+    def custom_fetch(self, inputs, fetch_layers):
+        return self.session.run(fetch_layers,
+                                feed_dict=dict(zip([l.get_output() for l in self.input_placeholder_layers], inputs)))
+
     def __str__(self):
         network_str = ""
         for layer in self.layers:
@@ -181,9 +189,12 @@ class TargetNeuralNetwork(INeuralNetwork):
         self.target_network = source_network.copy(name)
         self.target_network.set_parameters(self.target_parameters)
         self.target_network.compile(self.target_network.get_output_layer())
+        self.session = self.source_network.session
+        self.input_dims = source_network.input_dims
+        self.name = name
 
     def approach_source_parameters(self):
-        self.target_network.session.run(self.approach_parameters_op)
+        self.session.run(self.approach_parameters_op)
 
     def get_input_layer(self, input_id):
         return self.target_network.get_input(input_id)
