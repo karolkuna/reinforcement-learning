@@ -18,6 +18,7 @@ class SquaredLossOptimizer:
 
     def train(self, inputs, target):
         feed_dict = dict(zip([l.get_output() for l in self.network.get_input_placeholder_layers()], inputs))
+        feed_dict[self.network.is_training] = True
         feed_dict[self.target] = target
 
         self.network.session.run(self.optimizer_op, feed_dict=feed_dict)
@@ -36,5 +37,6 @@ class MaxOutputOptimizer:
 
     def train(self, inputs):
         feed_dict = dict(zip([l.get_output() for l in self.network.get_input_placeholder_layers()], inputs))
+        feed_dict[self.network.is_training] = True
 
         self.network.session.run(self.optimizer_op, feed_dict=feed_dict)

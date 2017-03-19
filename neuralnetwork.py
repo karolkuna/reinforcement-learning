@@ -56,6 +56,8 @@ class NeuralNetwork(INeuralNetwork):
             self.input_layers.append(input_layer)
             self.input_placeholder_layers.append(input_layer)
 
+        self.is_training = tf.placeholder(tf.bool, name=(name + "_is_training"))
+
         self.output_layer = None
         self.output_dim = None
         self.compiled = False
@@ -158,25 +160,31 @@ class NeuralNetwork(INeuralNetwork):
         if not self.compiled:
             raise Exception("Network must be compiled first!")
 
-        return self.session.run(self.output_layer.get_output(), feed_dict=dict(zip([l.get_output() for l in self.input_placeholder_layers], inputs)))
+        feed_dict = dict(zip([l.get_output() for l in self.input_placeholder_layers], inputs))
+        feed_dict[self.is_training] = False
+
+        return self.session.run(self.output_layer.get_output(), feed_dict=feed_dict)
 
     def predict(self, inputs):
         return self.predict_batch([[i] for i in inputs])[0]
 
     def custom_fetch(self, inputs, fetch_layers):
-        return self.session.run(fetch_layers,
-                                feed_dict=dict(zip([l.get_output() for l in self.input_placeholder_layers], inputs)))
+        feed_dict = dict(zip([l.get_output() for l in self.input_placeholder_layers], inputs))
+        feed_dict[self.is_training] = False
+
+        return self.session.run(fetch_layers, feed_dict=feed_dict)
 
     def __str__(self):
         network_str = ""
         for layer in self.layers:
-            network_str += str([l.get_name() for l in layer.get_input_layers()]) + " --> " + layer.get_name()
+            network_str += str([l.get_name() for l in layer.get_input_layers()]) + " --> " + layer.get_name() + "\n"
 
         return network_str
 
 
 class TargetNeuralNetwork(INeuralNetwork):
     def __init__(self, name, source_network, approach_rate):
+        self.name = name
         self.source_network = source_network
         self.approach_rate = approach_rate
 
@@ -191,7 +199,7 @@ class TargetNeuralNetwork(INeuralNetwork):
         self.target_network.compile(self.target_network.get_output_layer())
         self.session = self.source_network.session
         self.input_dims = source_network.input_dims
-        self.name = name
+        self.is_training = self.target_network.is_training
 
     def approach_source_parameters(self):
         self.session.run(self.approach_parameters_op)

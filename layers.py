@@ -122,7 +122,7 @@ class ConcatLayer(Layer):
 
     def compile(self, network):
         if self.output is not None:
-            raise Exception("Layer " + self.name +  " is already compiled!")
+            raise Exception("Layer " + self.name + " is already compiled!")
 
         self.output = tf.concat(axis=1, values=[l.get_output() for l in self.input_layers], name=(network.name + "_" + self.name))
         self.parameters = []
@@ -151,7 +151,7 @@ class AdditionLayer(Layer):
 
     def compile(self, network):
         if self.output is not None:
-            raise Exception("Layer " + self.name +  " is already compiled!")
+            raise Exception("Layer " + self.name + " is already compiled!")
 
         self.output = tf.add(self.input_layers[0].get_output(), self.input_layers[1].get_output(), name=(network.name + "_" + self.name))
         self.parameters = []
@@ -175,10 +175,90 @@ class ScalarMultiplyLayer(Layer):
 
     def compile(self, network):
         if self.output is not None:
-            raise Exception("Layer " + self.name +  " is already compiled!")
+            raise Exception("Layer " + self.name + " is already compiled!")
 
         self.output = tf.scalar_mul(self.scalar, self.input_layers[0].get_output())
         self.parameters = []
 
     def copy(self, new_name, input_layers):
         return ScalarMultiplyLayer(new_name, self.input_layers[0], self.scalar)
+
+
+class DropoutLayer(Layer):
+    def __init__(self, name, input_layer, keep_probability):
+        self.id = None
+        self.name = name
+        self.size = input_layer.get_size()
+        self.parameters = None
+        self.input_layers = [input_layer]
+        self.output = None
+        self.keep_probability = keep_probability
+
+    def get_parameter_count(self):
+        return 0
+
+    def compile(self, network):
+        if self.output is not None:
+            raise Exception("Layer " + self.name + " is already compiled!")
+
+        dropout = tf.nn.dropout(self.input_layers[0].get_output(), self.keep_probability, name=(network.name + "_" + self.name))
+        self.output = tf.cond(network.is_training, lambda: dropout, lambda: tf.identity(self.input_layers[0].get_output()))
+        self.parameters = []
+
+    def copy(self, new_name, input_layers):
+        return DropoutLayer(new_name, input_layers[0], self.keep_probability)
+
+
+class BatchNormalizationLayer(Layer):
+    def __init__(self, name, input_layer, momentum=0.99, epsilon=0.001, offset=0.0, scale=1.0, moving_mean_init=0.0, moving_variance_init=1.0):
+        self.id = None
+        self.name = name
+        self.size = input_layer.get_size()
+        self.parameters = None
+        self.input_layers = [input_layer]
+        self.momentum = momentum
+        self.epsilon = epsilon
+        self.offset = offset
+        self.scale = scale
+        self.moving_mean_init = moving_mean_init
+        self.moving_variance_init = moving_variance_init
+        self.output = None
+
+    def get_parameter_count(self):
+        return 2
+
+    def compile(self, network):
+        if self.output is not None:
+            raise Exception("Layer " + self.name + " is already compiled!")
+
+        self.offset_const = tf.constant(self.offset, shape=[self.size], name=(network.name + "_" + self.name + "_offset"))
+        self.scale_const = tf.constant(self.scale, shape=[self.size], name=(network.name + "_" + self.name + "_scale"))
+
+        if self.parameters is None:
+            self.moving_mean = tf.Variable(tf.constant(self.moving_mean_init, shape=[self.size]), name=(network.name + "_" + self.name + "_moving_mean"), trainable=False)
+            self.moving_variance = tf.Variable(tf.constant(self.moving_variance_init, shape=[self.size]), name=(network.name + "_" + self.name + "_moving_variance"), trainable=False)
+            self.parameters = [self.moving_mean, self.moving_variance]
+        else:
+            self.moving_mean = self.parameters[0]
+            self.moving_variance = self.parameters[1]
+
+        self.batch_mean, self.batch_variance = tf.nn.moments(self.input_layers[0].get_output(), axes=[0], name=(network.name + "_" + self.name + "_moments")) # TODO: use axes=[0,1,2] for image inputs
+
+        def moments_training():
+            update_mean = tf.assign_sub(self.moving_mean, (1 - self.momentum) * (self.moving_mean - self.batch_mean))
+            update_variance = tf.assign_sub(self.moving_variance, (1 - self.momentum) * (self.moving_variance - self.batch_variance))
+
+            with tf.control_dependencies([update_mean, update_variance]):
+                return tf.identity(self.batch_mean), tf.identity(self.batch_variance)
+
+        def moments_testing():
+            # TODO: should moving averages be updated during testing?
+            return tf.identity(self.moving_mean), tf.identity(self.moving_variance)
+
+        mean, variance = tf.cond(network.is_training, moments_training, moments_testing)
+
+        self.output = tf.nn.batch_normalization(self.input_layers[0].get_output(), mean, variance, self.offset_const, self.scale_const, self.epsilon, name=(network.name + "_" + self.name))
+
+    def copy(self, new_name, input_layers):
+        return BatchNormalizationLayer(new_name, input_layers[0], self.momentum, self.epsilon, self.offset, self.scale, self.moving_mean_init, self.moving_variance_init)
+
