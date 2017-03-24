@@ -262,3 +262,81 @@ class BatchNormalizationLayer(Layer):
     def copy(self, new_name, input_layers):
         return BatchNormalizationLayer(new_name, input_layers[0], self.momentum, self.epsilon, self.offset, self.scale, self.moving_mean_init, self.moving_variance_init)
 
+
+class ClipLayer(Layer):
+    def __init__(self, name, input_layer, lower_bound, upper_bound):
+        self.id = None
+        self.name = name
+        self.size = input_layer.get_size()
+        self.parameters = None
+        self.input_layers = [input_layer]
+        self.output = None
+        self.lower_bound = lower_bound
+        self.upper_bound = upper_bound
+
+    def get_parameter_count(self):
+        return 0
+
+    def compile(self, network):
+        if self.output is not None:
+            raise Exception("Layer " + self.name + " is already compiled!")
+
+        self.output = tf.clip_by_value(self.input_layers[0], self.lower_bound, self.upper_bound, name=(network.name + "_" + self.name))
+        self.parameters = []
+
+    def copy(self, new_name, input_layers):
+        return ClipLayer(new_name, input_layers[0], self.lower_bound, self.upper_bound)
+
+
+class BoundingLayer(Layer):
+    def __init__(self, name, input_layer, lower_bound, upper_bound):
+        """
+        This layer behaves as identity during inference, it may return values outside of defined bounds.
+        During training, gradients of values outside the bounded range are inverted so as to point inside.
+        Eventually, the network should learn to keep its outputs in the specified range.
+        Unlike ClipLayer or nonlinear activation functions, BoundingLayer doesn't saturate.
+
+        :param name:
+        :param input_layer:
+        :param lower_bound: scalar or list of scalars. Supports broadcasting
+        :param upper_bound: scalar or list of scalars. Supports broadcasting
+        """
+        self.id = None
+        self.name = name
+        self.size = input_layer.get_size()
+        self.parameters = None
+        self.input_layers = [input_layer]
+        self.output = None
+        self.lower_bound = lower_bound
+        self.upper_bound = upper_bound
+
+    def get_parameter_count(self):
+        return 0
+
+    def compile(self, network):
+        if self.output is not None:
+            raise Exception("Layer " + self.name + " is already compiled!")
+
+        def _invert_out_of_bounds_gradient(op, grad):
+            is_above_upper_bound = tf.greater(op.inputs[0], tf.constant(self.upper_bound, dtype=tf.float32))
+            is_under_lower_bound = tf.less(op.inputs[0], tf.constant(self.lower_bound, dtype=tf.float32))
+            is_gradient_positive = tf.greater(grad, tf.constant(0, dtype=tf.float32))
+            is_gradient_negative = tf.less(grad, tf.constant(0, dtype=tf.float32))
+
+            invert_gradient = tf.logical_or(
+                tf.logical_and(is_above_upper_bound, is_gradient_negative),
+                tf.logical_and(is_under_lower_bound, is_gradient_positive)
+            )
+
+            return tf.where(invert_gradient, -grad, grad)
+
+        gradient_op_name = network.name + "_" + self.name + "_gradient_op"
+        tf.RegisterGradient(gradient_op_name)(_invert_out_of_bounds_gradient)  # see _MySquareGrad for grad example
+
+        with tf.get_default_graph().gradient_override_map({"Identity": gradient_op_name}):
+            self.output = tf.identity(self.input_layers[0].get_output(), name=(network.name + "_" + self.name))
+
+        self.parameters = []
+
+    def copy(self, new_name, input_layers):
+        return BoundingLayer(new_name, input_layers[0], self.lower_bound, self.upper_bound)
