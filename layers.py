@@ -215,6 +215,7 @@ class BatchNormalizationLayer(Layer):
         self.name = name
         self.size = input_layer.get_size()
         self.parameters = None
+        self.is_parameters_owner = None
         self.input_layers = [input_layer]
         self.momentum = momentum
         self.epsilon = epsilon
@@ -238,9 +239,11 @@ class BatchNormalizationLayer(Layer):
             self.moving_mean = tf.Variable(tf.constant(self.moving_mean_init, shape=[self.size]), name=(network.name + "_" + self.name + "_moving_mean"), trainable=False)
             self.moving_variance = tf.Variable(tf.constant(self.moving_variance_init, shape=[self.size]), name=(network.name + "_" + self.name + "_moving_variance"), trainable=False)
             self.parameters = [self.moving_mean, self.moving_variance]
+            self.is_parameters_owner = True
         else:
             self.moving_mean = self.parameters[0]
             self.moving_variance = self.parameters[1]
+            self.is_parameters_owner = False
 
         self.batch_mean, self.batch_variance = tf.nn.moments(self.input_layers[0].get_output(), axes=[0], name=(network.name + "_" + self.name + "_moments")) # TODO: use axes=[0,1,2] for image inputs
 
@@ -255,7 +258,11 @@ class BatchNormalizationLayer(Layer):
             # TODO: should moving averages be updated during testing?
             return tf.identity(self.moving_mean), tf.identity(self.moving_variance)
 
-        mean, variance = tf.cond(network.is_training, moments_training, moments_testing)
+        if self.is_parameters_owner:
+            mean, variance = tf.cond(network.is_training, moments_training, moments_testing)
+        else:
+            # when parameters are shared, the normalization should always work in testing mode
+            mean, variance = moments_testing()
 
         self.output = tf.nn.batch_normalization(self.input_layers[0].get_output(), mean, variance, self.offset_const, self.scale_const, self.epsilon, name=(network.name + "_" + self.name))
 
