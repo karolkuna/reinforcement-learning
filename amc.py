@@ -8,7 +8,7 @@ from optimizers import SquaredLossOptimizer, MaxOutputOptimizer
 from actorcritic import create_actor_model_critic_network
 
 class AMC:
-    def __init__(self, actor_network, model_network, reward_network, value_network, forward_steps=1, discount_factor=0.9, batch_size=128, replay_buffer_size=100000, learning_rate=0.0001, actor_target_approach_rate=0.999, value_target_approach_rate=0.999):
+    def __init__(self, actor_network, model_network, reward_network, value_network, forward_steps=1, discount_factor=0.9, learning_rate=0.0001, actor_target_approach_rate=0.999, value_target_approach_rate=0.999):
         if forward_steps < 1:
             raise Exception("At least one forward step has to be executed!")
 
@@ -16,8 +16,6 @@ class AMC:
         self.action_dim = actor_network.output_dim
         self.forward_steps = 1
         self.discount_factor = discount_factor
-        self.batch_size = batch_size
-        self.replay_buffer_size = replay_buffer_size
         self.learning_rate = learning_rate
         self.actor_target_approach_rate = actor_target_approach_rate
         self.value_target_approach_rate = value_target_approach_rate
@@ -46,44 +44,29 @@ class AMC:
             self.actor_ac_network, tf.train.AdamOptimizer(learning_rate), actor_network.get_parameters()
         )
 
-        self.replay_buffer = ReplayBuffer(replay_buffer_size, self.state_dim, self.action_dim)
-
         self.actor_network.session.run(tf.global_variables_initializer())
 
-    def train(self, train_actor=True, train_model=True, train_reward=True, train_value=True):
-        state_batch, action_batch, reward_batch, next_state_batch, done_batch, ids = self.replay_buffer.get_batch(self.batch_size)
+    def train(self, state_batch, action_batch, reward_batch, next_state_batch, done_batch):
+        self.train_model(state_batch, action_batch, next_state_batch)
+        self.train_reward(state_batch, action_batch, reward_batch)
+        self.train_actor(state_batch)
+        self.train_value(state_batch, done_batch)
 
-        if train_actor:
-            self.actor_optimizer.train([state_batch])
-            self.actor_target_network.approach_source_parameters()
+    def train_actor(self, state_batch):
+        self.actor_optimizer.train([state_batch])
+        self.actor_target_network.approach_source_parameters()
 
-        if train_model:
-            self.model_optimizer.train([state_batch, action_batch], next_state_batch)
+    def train_model(self, state_batch, action_batch, next_state_batch):
+        self.model_optimizer.train([state_batch, action_batch], next_state_batch)
 
-        if train_reward:
-            self.reward_optimizer.train([state_batch, action_batch], reward_batch)
+    def train_reward(self, state_batch, action_batch, reward_batch):
+        self.reward_optimizer.train([state_batch, action_batch], reward_batch)
 
-        if train_value:
-            value_target_batch = self.value_ac_network.predict_batch([state_batch])
-
-            for i in range(self.batch_size):
-                if done_batch[i]:
-                    value_target_batch[i] = reward_batch[i] # TODO: when forward_steps > 1, episode ends are not handled properly
-
-            value_target_batch = np.resize(value_target_batch, [self.batch_size, 1])
-
-            self.value_optimizer.train([state_batch], value_target_batch)
-            self.value_target_network.approach_source_parameters()
-
-    def reset_replay_buffer(self):
-        self.replay_buffer = ReplayBuffer(self.replay_buffer_size, self.state_dim, self.action_dim)
+    def train_value(self, state_batch, done_batch):
+        value_target_batch = self.value_ac_network.predict_batch([state_batch])
+        self.value_optimizer.train([state_batch], value_target_batch)
+        self.value_target_network.approach_source_parameters()
 
     def action(self, state):
         action = self.actor_network.predict([state])
         return action
-
-    def noisy_action(self, state, mean=0, stddev=1.0):
-        return self.actor_network.predict([state]) + np.random.normal(mean, stddev, self.action_dim)
-
-    def store_transition(self, state, action, reward, next_state, done):
-        self.replay_buffer.add(state, action, reward, next_state, done)
