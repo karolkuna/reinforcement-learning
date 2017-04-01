@@ -55,8 +55,7 @@ class ReplayBuffer(object):
                self.action_buffer.get_batch(batch_size, ids), \
                self.reward_buffer.get_batch(batch_size, ids), \
                self.next_state_buffer.get_batch(batch_size, ids), \
-               self.done_buffer.get_batch(batch_size, ids), \
-               ids
+               self.done_buffer.get_batch(batch_size, ids)
 
     def add(self, state, action, reward, next_state, done):
         self.filled_size = min(self.filled_size + 1, self.size)
