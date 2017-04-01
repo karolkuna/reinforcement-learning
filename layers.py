@@ -1,6 +1,7 @@
 # Copyright 2017 Karol Kuna
 
 import tensorflow as tf
+import uuid
 from math import sqrt
 
 class Layer:
@@ -337,7 +338,7 @@ class BoundingLayer(Layer):
 
             return tf.where(invert_gradient, -grad, grad)
 
-        gradient_op_name = network.name + "_" + self.name + "_gradient_op"
+        gradient_op_name = network.name + "_" + self.name + "_gradient_op_" + str(uuid.uuid4())[:8]
         tf.RegisterGradient(gradient_op_name)(_invert_out_of_bounds_gradient)  # see _MySquareGrad for grad example
 
         with tf.get_default_graph().gradient_override_map({"Identity": gradient_op_name}):
