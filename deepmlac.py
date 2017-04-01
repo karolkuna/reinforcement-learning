@@ -8,7 +8,7 @@ from optimizers import SquaredLossOptimizer, MaxOutputOptimizer
 from actorcritic import create_actor_model_critic_network
 
 class DeepMLAC:
-    def __init__(self, actor_network, model_network, reward_network, value_network, forward_steps=1, discount_factor=0.9, trace_decay=0.9, learning_rate=0.0001, actor_target_approach_rate=0.999, value_target_approach_rate=0.999):
+    def __init__(self, actor_network, model_network, reward_network, value_network, forward_steps=1, discount_factor=0.9, trace_decay=0.9, tf_optimizer=tf.train.AdamOptimizer(0.0001), actor_target_approach_rate=0.999, value_target_approach_rate=0.999):
         if forward_steps < 1:
             raise Exception("At least one forward step has to be executed!")
 
@@ -17,7 +17,6 @@ class DeepMLAC:
         self.forward_steps = 1
         self.discount_factor = discount_factor
         self.trace_decay = trace_decay
-        self.learning_rate = learning_rate
         self.actor_target_approach_rate = actor_target_approach_rate
         self.value_target_approach_rate = value_target_approach_rate
 
@@ -25,14 +24,14 @@ class DeepMLAC:
         self.actor_target_network = TargetNeuralNetwork(actor_network.name + "_target", actor_network, actor_target_approach_rate)
 
         self.model_network = model_network
-        self.model_optimizer = SquaredLossOptimizer(model_network, tf.train.AdamOptimizer(learning_rate))
+        self.model_optimizer = SquaredLossOptimizer(model_network, tf_optimizer)
 
         self.reward_network = reward_network
-        self.reward_optimizer = SquaredLossOptimizer(reward_network, tf.train.AdamOptimizer(learning_rate))
+        self.reward_optimizer = SquaredLossOptimizer(reward_network, tf_optimizer)
 
         self.value_network = value_network
         self.value_target_network = TargetNeuralNetwork(value_network.name + "_target", value_network, value_target_approach_rate)
-        self.value_optimizer = SquaredLossOptimizer(value_network, tf.train.AdamOptimizer(learning_rate))
+        self.value_optimizer = SquaredLossOptimizer(value_network, tf_optimizer)
 
         self.actor_ac_network, _actors, _models, _rewards, _values = create_actor_model_critic_network(
             "Actor_AC", actor_network, model_network, reward_network, self.value_target_network, self.discount_factor, 1, False # TODO: should actor learn from multiple forward steps too?
@@ -42,7 +41,7 @@ class DeepMLAC:
         )
 
         self.actor_optimizer = MaxOutputOptimizer(
-            self.actor_ac_network, tf.train.AdamOptimizer(learning_rate), actor_network.get_parameters()
+            self.actor_ac_network, tf_optimizer, actor_network.get_parameters()
         )
 
         self.actor_network.session.run(tf.global_variables_initializer())

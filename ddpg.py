@@ -8,11 +8,10 @@ from optimizers import SquaredLossOptimizer, MaxOutputOptimizer
 from actorcritic import create_actor_critic_network
 
 class DDPG:
-    def __init__(self, actor_network, q_network, discount_factor=0.9, learning_rate=0.0001, actor_target_approach_rate=0.999, q_target_approach_rate=0.999):
+    def __init__(self, actor_network, q_network, discount_factor=0.9, tf_optimizer=tf.train.AdamOptimizer(0.0001), actor_target_approach_rate=0.999, q_target_approach_rate=0.999):
         self.state_dim = actor_network.input_dims[0]
         self.action_dim = actor_network.output_dim
         self.discount_factor = discount_factor
-        self.learning_rate = learning_rate
         self.actor_target_approach_rate = actor_target_approach_rate
         self.q_target_approach_rate = q_target_approach_rate
 
@@ -21,10 +20,10 @@ class DDPG:
 
         self.q_network = q_network
         self.q_target_network = TargetNeuralNetwork("Q_target", self.q_network, self.q_target_approach_rate)
-        self.q_optimizer = SquaredLossOptimizer(q_network, tf.train.AdamOptimizer(learning_rate))
+        self.q_optimizer = SquaredLossOptimizer(q_network, tf_optimizer)
 
         self.actor_critic_network, _actor, _critic = create_actor_critic_network("ActorCritic", actor_network, self.q_target_network)
-        self.actor_optimizer = MaxOutputOptimizer(self.actor_critic_network, tf.train.AdamOptimizer(learning_rate), self.actor_network.get_parameters())
+        self.actor_optimizer = MaxOutputOptimizer(self.actor_critic_network, tf_optimizer, self.actor_network.get_parameters())
 
         self.actor_network.session.run(tf.global_variables_initializer())
 
