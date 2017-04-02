@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import random
 import multiprocessing
@@ -135,21 +136,36 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         return self.priorities[to_id]
 
 
-    def get_batch(self, batch_size, proportional_to_priorities=True):
+    def get_batch(self, batch_size, proportional_to_priorities=True, decay_old_samples_priority=False):
+        """
+        :param batch_size: number of samples to return 
+        :param proportional_to_priorities: if true, samples are selected randomly according to stored priority. Probability
+                                            of a sample being returned is its priority over sum of all priorities in buffer
+                                           Otherwise, samples are selected with uniform probability
+        :param decay_old_samples_priority: if true, older samples are returned less frequently. Priority of a sample is
+                                            scaled linearly by its position in the buffer  
+        :return: batch
+        """
         if not proportional_to_priorities:
             return ReplayBuffer.get_batch(self, batch_size)
 
         if self.parallel:
-            return self.parallel_get_batch(batch_size)
+            return self.parallel_get_batch(batch_size, decay_old_samples_priority)
 
         batch_ids = []
+        min_pri = self.priorities[0].prev_priority_sum
+        max_pri = self.priorities[-1].priority_sum
+
         for i in range(batch_size):
-            rnd_nb = random.uniform(self.priorities[0].prev_priority_sum, self.priorities[-1].priority_sum)
-            batch_ids.append(self.find_priority(rnd_nb).buffer_id)
+            rnd_nb = random.uniform(0.0, 1.0)
+            if decay_old_samples_priority:
+                rnd_nb = math.sqrt(rnd_nb)  # shifts distribution towards newer samples
+            rnd_pri = min_pri + (max_pri - min_pri) * rnd_nb
+            batch_ids.append(self.find_priority(rnd_pri).buffer_id)
 
         return ReplayBuffer.get_batch(self, batch_size, batch_ids)
 
-    def parallel_get_batch(self, batch_size):
+    def parallel_get_batch(self, batch_size, decay_old_samples_priority=False):
         if len(self.priorities_journal) > 1000:  # when journal is too long, it may be faster to re-sync priorities list
             self.pool.terminate()
             self.init_worker_pool()
@@ -160,7 +176,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
                     queue.put(self.priorities_journal)
                 self.priorities_journal = []
 
-        batch_ids = self.pool.map(get_random_buffer_id, range(batch_size))
+        batch_ids = self.pool.map(get_random_buffer_id, [decay_old_samples_priority] * batch_size)
 
         return ReplayBuffer.get_batch(self, batch_size, batch_ids)
 
@@ -182,7 +198,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self.priorities[0].prev_priority_sum = 0
         self.priorities[0].priority_sum = self.priorities[0].priority
 
-        for i in range(1, self.size):
+        for i in xrange(1, self.size):
             self.priorities[i].prev_priority_sum = self.priorities[i - 1].priority_sum
             self.priorities[i].priority_sum = self.priorities[i].prev_priority_sum + self.priorities[i].priority
 
@@ -204,7 +220,7 @@ def init_worker_process(priorities, queue_ids, queues):
     g_queue = queues[queue_ids.get()]  # assigns a queue to each process
 
 
-def get_random_buffer_id(unused_arg):
+def get_random_buffer_id(decay_old_samples_priority):
     global g_priorities
 
     # sync changes made to priorities list to this g_priorities
@@ -217,8 +233,14 @@ def get_random_buffer_id(unused_arg):
             else:
                 g_priorities.append(priority)
 
-    rnd_nb = random.uniform(g_priorities[0].prev_priority_sum, g_priorities[-1].priority_sum)
-    return find_priority(rnd_nb).buffer_id
+    min_pri = g_priorities[0].prev_priority_sum
+    max_pri = g_priorities[-1].priority_sum
+
+    rnd_nb = random.uniform(0.0, 1.0)
+    if decay_old_samples_priority:
+        rnd_nb = math.sqrt(rnd_nb)  # shifts distribution towards newer samples
+    rnd_pri = min_pri + (max_pri - min_pri) * rnd_nb
+    return find_priority(rnd_pri).buffer_id
 
 
 def find_priority(value):
