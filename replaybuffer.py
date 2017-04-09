@@ -3,50 +3,41 @@ import numpy as np
 import random
 import multiprocessing
 import multiprocessing.queues
+from operator import itemgetter
 
 
 class SimpleBuffer(object):
-    def __init__(self, size, dim):
-        self.size = size
+    def __init__(self, max_size, dim):
+        self.max_size = max_size
         self.dim = dim
-        self.buffer = np.zeros([size, dim])
-        self.filled_size = 0
-        self.latest_added_id = -1
+        self.buffer = list()
 
     def add(self, value):
-        self.latest_added_id = (self.latest_added_id + 1) % self.size
-        self.buffer[self.latest_added_id] = value
+        if len(self.buffer) >= self.max_size:
+            self.buffer.pop(0)
 
-        if self.filled_size < self.size:
-            self.filled_size += 1
+        self.buffer.append(value)
 
     def get_batch(self, batch_size, ids=None):
         if ids is None:
-            ids = np.random.random_integers(0, self.filled_size - 1, batch_size)
+            ids = np.random.random_integers(0, len(self.buffer) - 1, batch_size)
 
-        return self.buffer[ids]
-
-    def get_latest_value(self):
-        if self.latest_added_id == -1:
-            return None
-        else:
-            return self.buffer[self.latest_added_id]
+        return itemgetter(*ids)(self.buffer)
 
 
 class ReplayBuffer(object):
 
-    def __init__(self, buffer_size, state_dim, action_dim):
-        self.size = buffer_size
-        self.filled_size = 0
+    def __init__(self, max_size, state_dim, action_dim):
+        self.max_size = max_size
         
-        self.state_buffer = SimpleBuffer(buffer_size, state_dim)
-        self.action_buffer = SimpleBuffer(buffer_size, action_dim)
-        self.reward_buffer = SimpleBuffer(buffer_size, 1)
-        self.next_state_buffer = SimpleBuffer(buffer_size, state_dim)
-        self.done_buffer = SimpleBuffer(buffer_size, 1)
+        self.state_buffer = SimpleBuffer(max_size, state_dim)
+        self.action_buffer = SimpleBuffer(max_size, action_dim)
+        self.reward_buffer = SimpleBuffer(max_size, 1)
+        self.next_state_buffer = SimpleBuffer(max_size, state_dim)
+        self.done_buffer = SimpleBuffer(max_size, 1)
 
     def get_random_ids(self, batch_size):
-        return np.random.random_integers(0, self.filled_size - 1, batch_size)
+        return np.random.random_integers(0, len(self.state_buffer) - 1, batch_size)
 
     def get_batch(self, batch_size, ids=None):
         if ids is None:
@@ -59,8 +50,6 @@ class ReplayBuffer(object):
                self.done_buffer.get_batch(batch_size, ids)
 
     def add(self, state, action, reward, next_state, done):
-        self.filled_size = min(self.filled_size + 1, self.size)
-
         self.state_buffer.add(state)
         self.action_buffer.add(action)
         self.reward_buffer.add(reward)
@@ -69,16 +58,16 @@ class ReplayBuffer(object):
 
 
 class Priority(object):
-    def __init__(self, priority, prev_priority_sum, buffer_id):
+    def __init__(self, priority, prev_priority_sum):
         self.priority = priority
         self.prev_priority_sum = prev_priority_sum
         self.priority_sum = priority + prev_priority_sum
-        self.buffer_id = buffer_id
 
 
 class PrioritizedReplayBuffer(ReplayBuffer):
-    def __init__(self, buffer_size, state_dim, action_dim, parallel=True):
-        ReplayBuffer.__init__(self, buffer_size, state_dim, action_dim)
+    def __init__(self, max_size, state_dim, action_dim, parallel=True):
+        ReplayBuffer.__init__(self, max_size, state_dim, action_dim)
+        self.max_size = max_size
         self.priorities = list()
         self.parallel = parallel
         if parallel:
@@ -99,26 +88,28 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         self.pool = multiprocessing.Pool(processes=multiprocessing.cpu_count(),
                                          initializer=init_worker_process,
-                                         initargs=(self.priorities, worker_queue_ids, self.worker_queues))
+                                         initargs=(self.priorities, self.max_size, worker_queue_ids, self.worker_queues))
 
-    def add(self, state, action, reward, next_state, done, priority=1):
-        ReplayBuffer.add(self, state, action, reward, next_state, done)
-        
-        prev_priority_sum = 0
-        if len(self.priorities) > 0:
+    def add_priority(self, priority):
+        if len(self.priorities) == 0:
+            prev_priority_sum = 0
+        else:
             prev_priority_sum = self.priorities[-1].priority_sum
 
-        new_priority = Priority(priority, prev_priority_sum, self.state_buffer.latest_added_id)
+        if len(self.priorities) >= self.max_size:
+            self.priorities.pop(0)
+
+        new_priority = Priority(priority, prev_priority_sum)
         self.priorities.append(new_priority)
+        
         if self.parallel:
             self.priorities_journal.append(new_priority)
 
-        if len(self.priorities) > self.size:
-            self.priorities.pop(0)
-            if self.parallel:
-                self.priorities_journal.append(None)
-
-    def find_priority(self, value):
+    def add(self, state, action, reward, next_state, done, priority=1):
+        ReplayBuffer.add(self, state, action, reward, next_state, done)
+        self.add_priority(priority)
+        
+    def find_id_by_sampled_value(self, value):
         from_id = 0
         to_id = len(self.priorities) - 1
 
@@ -131,9 +122,9 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             elif value < middle_value:
                 to_id = middle_id
             else:
-                return self.priorities[middle_id]
+                return middle_id
 
-        return self.priorities[to_id]
+        return to_id
 
 
     def get_batch(self, batch_size, proportional_to_priorities=True, decay_old_samples_priority=False):
@@ -161,7 +152,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             if decay_old_samples_priority:
                 rnd_nb = math.sqrt(rnd_nb)  # shifts distribution towards newer samples
             rnd_pri = min_pri + (max_pri - min_pri) * rnd_nb
-            batch_ids.append(self.find_priority(rnd_pri).buffer_id)
+            batch_ids.append(self.find_id_by_sampled_value(rnd_pri))
 
         return ReplayBuffer.get_batch(self, batch_size, batch_ids)
 
@@ -181,24 +172,14 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         return ReplayBuffer.get_batch(self, batch_size, batch_ids)
 
     def change_priority(self, buffer_id, new_priority):
-        # buffers use rotational memory, but priority list doesn't. buffer_id has to be transformed
         # warning: recalculate_sums must be called before using the buffer
-        p_id = buffer_id
-        buffer_latest_id = self.state_buffer.latest_added_id
-
-        if self.filled_size == self.size:
-            if buffer_id <= self.state_buffer.latest_added_id:
-                p_id = buffer_id + (self.size - buffer_latest_id - 1)
-            else:
-                p_id = buffer_id - buffer_latest_id - 1
-
-        self.priorities[p_id].priority = new_priority
+        self.priorities[buffer_id].priority = new_priority
 
     def recalculate_sums(self):
         self.priorities[0].prev_priority_sum = 0
         self.priorities[0].priority_sum = self.priorities[0].priority
 
-        for i in xrange(1, self.size):
+        for i in xrange(1, self.max_size):
             self.priorities[i].prev_priority_sum = self.priorities[i - 1].priority_sum
             self.priorities[i].priority_sum = self.priorities[i].prev_priority_sum + self.priorities[i].priority
 
@@ -212,26 +193,29 @@ g_queue = None
 g_priorities = None
 
 
-def init_worker_process(priorities, queue_ids, queues):
+def init_worker_process(priorities, max_size, queue_ids, queues):
     global g_queue
     global g_priorities
+    global g_max_size
 
     g_priorities = priorities
+    g_max_size = max_size
     g_queue = queues[queue_ids.get()]  # assigns a queue to each process
 
 
 def get_random_buffer_id(decay_old_samples_priority):
     global g_priorities
+    global g_max_size
 
     # sync changes made to priorities list to this g_priorities
     while not g_queue.empty():
         # g_queue contains lists of changes (either adding or removal of a priority object)
         priorities_journal = g_queue.get()
         for priority in priorities_journal:
-            if priority is None:
+            if len(g_priorities) >= g_max_size:
                 g_priorities.pop(0)
-            else:
-                g_priorities.append(priority)
+
+            g_priorities.append(priority)
 
     min_pri = g_priorities[0].prev_priority_sum
     max_pri = g_priorities[-1].priority_sum
@@ -240,10 +224,10 @@ def get_random_buffer_id(decay_old_samples_priority):
     if decay_old_samples_priority:
         rnd_nb = math.sqrt(rnd_nb)  # shifts distribution towards newer samples
     rnd_pri = min_pri + (max_pri - min_pri) * rnd_nb
-    return find_priority(rnd_pri).buffer_id
+    return find_id_by_sampled_value(rnd_pri)
 
 
-def find_priority(value):
+def find_id_by_sampled_value(value):
     global g_priorities
 
     from_id = 0
@@ -258,6 +242,6 @@ def find_priority(value):
         elif value < middle_value:
             to_id = middle_id
         else:
-            return g_priorities[middle_id]
+            return middle_id
 
-    return g_priorities[to_id]
+    return to_id
