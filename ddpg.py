@@ -55,3 +55,11 @@ class DDPG:
     def action(self, state):
         action = self.actor_network.predict([state])
         return action
+
+    def get_td_error(self, state, action, reward, next_state, done):
+        pred_next_action = self.actor_target_network.predict([next_state])
+        pred_qs = self.q_target_network.predict_batch([[state, next_state], [action, pred_next_action]])
+        pred_q = pred_qs[0][0]
+        pred_next_q = pred_qs[1][0]
+        td_error = reward + self.discount_factor * pred_next_q - pred_q
+        return td_error
