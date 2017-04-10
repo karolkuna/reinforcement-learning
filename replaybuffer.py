@@ -171,6 +171,9 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         return ReplayBuffer.get_batch(self, batch_size, batch_ids)
 
+    def get_batch_by_ids(self, buffer_ids):
+        return ReplayBuffer.get_batch(self, len(batch_ids), batch_ids)
+
     def change_priority(self, buffer_id, new_priority):
         # warning: recalculate_sums must be called before using the buffer
         self.priorities[buffer_id].priority = new_priority
@@ -186,6 +189,22 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         if self.parallel:
             self.pool.terminate()
             self.init_worker_pool()
+
+    def update_oldest_priorities(new_priorities):
+        # only priorities of the oldest samples can be updated quickly
+        # without recalculating priority sums of entire buffer
+        for new_priority in new_priorities:
+            self.state_buffer.buffer.append(self.state_buffer.buffer.pop(0))
+            self.action_buffer.buffer.append(self.action_buffer.buffer.pop(0))
+            self.reward_buffer.buffer.append(self.reward_buffer.buffer.pop(0))
+            self.next_state_buffer.buffer.append(self.next_state_buffer.buffer.pop(0))
+            self.done_buffer.buffer.append(self.done_buffer.buffer.pop(0))
+            
+            if self.parallel:
+                self.priorities_journal.append(None)
+
+            self.priorities.pop(0)
+            self.priorities.add(new_priority)
 
 
 # global variables for worker processes
@@ -215,7 +234,10 @@ def get_random_buffer_id(decay_old_samples_priority):
             if len(g_priorities) >= g_max_size:
                 g_priorities.pop(0)
 
-            g_priorities.append(priority)
+            if priority is None:
+                g_priorities.pop(0)
+            else:
+                g_priorities.append(priority)
 
     min_pri = g_priorities[0].prev_priority_sum
     max_pri = g_priorities[-1].priority_sum
