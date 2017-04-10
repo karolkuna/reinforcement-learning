@@ -37,7 +37,7 @@ class ReplayBuffer(object):
         self.done_buffer = SimpleBuffer(max_size, 1)
 
     def get_random_ids(self, batch_size):
-        return np.random.random_integers(0, len(self.state_buffer) - 1, batch_size)
+        return np.random.random_integers(0, len(self.state_buffer.buffer) - 1, batch_size)
 
     def get_batch(self, batch_size, ids=None):
         if ids is None:
@@ -172,7 +172,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         return ReplayBuffer.get_batch(self, batch_size, batch_ids)
 
     def get_batch_by_ids(self, buffer_ids):
-        return ReplayBuffer.get_batch(self, len(batch_ids), batch_ids)
+        return ReplayBuffer.get_batch(self, len(buffer_ids), buffer_ids)
 
     def change_priority(self, buffer_id, new_priority):
         # warning: recalculate_sums must be called before using the buffer
@@ -190,7 +190,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             self.pool.terminate()
             self.init_worker_pool()
 
-    def update_oldest_priorities(new_priorities):
+    def update_oldest_priorities(self, new_priorities):
         # only priorities of the oldest samples can be updated quickly
         # without recalculating priority sums of entire buffer
         for new_priority in new_priorities:
