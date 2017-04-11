@@ -57,9 +57,25 @@ class DDPG:
         return action
 
     def get_td_error(self, state, action, reward, next_state, done):
-        pred_next_action = self.actor_target_network.predict([next_state])
-        pred_qs = self.q_target_network.predict_batch([[state, next_state], [action, pred_next_action]])
-        pred_q = pred_qs[0][0]
-        pred_next_q = pred_qs[1][0]
-        td_error = reward + self.discount_factor * pred_next_q - pred_q
-        return td_error
+        return self.get_td_error_batch([state], [action], [reward], [next_state], [done])[0]
+
+    def get_td_error_batch(self, state_batch, action_batch, reward_batch, next_state_batch, done_batch):
+        batch_size = len(state_batch)
+        next_action_batch = self.actor_target_network.predict_batch([next_state_batch])
+
+        # predicting q_t and q_t+1 is merged into one batch for efficiency
+        q_state_batch = []
+        q_state_batch.extend(state_batch)
+        q_state_batch.extend(next_state_batch)
+        q_action_batch = []
+        q_action_batch.extend(action_batch)
+        q_action_batch.extend(next_action_batch)
+        qs = self.q_target_network.predict_batch([q_state_batch, q_action_batch])
+        td_error_batch = []
+        for i in range(batch_size):
+            q = qs[i]
+            next_q = qs[batch_size + i]
+            td_error = reward_batch[i] + self.discount_factor * next_q - q
+            td_error_batch.append(td_error)
+
+        return td_error_batch
