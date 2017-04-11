@@ -204,7 +204,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
                 self.priorities_journal.append(None)
 
             self.priorities.pop(0)
-            self.priorities.add(new_priority)
+            self.add_priority(new_priority)
 
 
 # global variables for worker processes
