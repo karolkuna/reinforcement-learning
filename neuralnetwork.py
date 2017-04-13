@@ -107,7 +107,7 @@ class NeuralNetwork(INeuralNetwork):
 
         for input_layer in self.input_layers:
             if input_layer.get_id() is None:
-                raise Exception("Output is unreachable from input " + input_layer.name + "!")
+                raise Exception("Output is unreachable from input " + input_layer.name + "!\nNetwork: " + str(self))
 
         for layer in self.layers:
             layer.compile(self)
