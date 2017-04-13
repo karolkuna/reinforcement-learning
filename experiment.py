@@ -1,4 +1,5 @@
 import tensorflow as tf
+import matplotlib.pyplot as plt
 from displayframesasgif import display_frames_as_gif
 from movingaverage import MovingAverage
 
@@ -15,14 +16,15 @@ class Experiment:
         self.episode_reward = 0
         self.episode_duration = 0
         self.td_error_history = []
+        self.model_error_history = []
+        self.reward_error_history = []
 
         self.frames = []
 
 
-    def record(self, t, state, action, reward, next_state, done, td_error):
+    def record(self, t, state, action, reward, next_state, done, td_error, model_error=0, reward_error=0):
         self.reward_history.append(reward)
         self.reward_100ma.add_value(reward)
-
 
         cumulative_reward = reward
         if len(self.cumulative_reward_history) > 0:
@@ -30,6 +32,8 @@ class Experiment:
         self.cumulative_reward_history.append(cumulative_reward)
 
         self.td_error_history.append(td_error)
+        self.model_error_history.append(model_error)
+        self.reward_error_history.append(reward_error)
 
         self.episode_reward += reward
         self.episode_duration += 1
@@ -42,9 +46,6 @@ class Experiment:
         if self.render_environment and t % self.render_frequency == 0:
             self.frames.append(self.environment.render(mode = 'rgb_array'))
 
-
-
-
     def print_all_tf_variables(self, session):
         variables = tf.trainable_variables()
         values = session.run(variables)
@@ -54,3 +55,18 @@ class Experiment:
 
     def display_frames_as_gif(self):
         display_frames_as_gif(self.frames)
+
+    def plot_reward(self):
+        return plt.plot(self.reward_history)
+
+    def plot_cumulative_reward(self):
+        return plt.plot(self.cumulative_reward_history)
+
+    def plot_td_error(self):
+        return plt.plot(self.td_error_history)
+
+    def plot_model_error(self):
+        return plt.plot(self.model_error_history)
+
+    def plot_reward_error(self):
+        return plt.plot(self.reward_error_history)
