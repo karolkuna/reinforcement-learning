@@ -155,6 +155,78 @@ class AdditionLayer(Layer):
         return AdditionLayer(new_name, input_layers)
 
 
+class SubtractionLayer(Layer):
+    def __init__(self, name, input_layers):
+        if (len(input_layers) != 2):
+            raise Exception("Subtraction layer requires 2 inputs!")
+
+        if (input_layers[0].get_size() != input_layers[1].get_size()):
+            raise Exception("Subtraction layer inputs must have same dimension!")
+
+        Layer.__init__(self, name)
+        self.size = input_layers[0].get_size()
+        self.input_layers = input_layers
+
+    def get_parameter_count(self):
+        return 0
+
+    def compile(self, network):
+        if self.output is not None:
+            raise Exception("Layer " + self.name + " is already compiled!")
+
+        self.output = tf.subtract(self.input_layers[0].get_output(), self.input_layers[1].get_output(), name=(network.name + "_" + self.name))
+        self.parameters = []
+
+    def copy(self, new_name, input_layers):
+        return SubtractionLayer(new_name, input_layers)
+
+
+class SquaredDifferenceLayer(Layer):
+    def __init__(self, name, input_layers):
+        if (len(input_layers) != 2):
+            raise Exception("Squared difference layers requires 2 inputs!")
+
+        if (input_layers[0].get_size() != input_layers[1].get_size()):
+            raise Exception("Squared difference layer inputs must have same dimension!")
+
+        Layer.__init__(self, name)
+        self.size = input_layers[0].get_size()
+        self.input_layers = input_layers
+
+    def get_parameter_count(self):
+        return 0
+
+    def compile(self, network):
+        if self.output is not None:
+            raise Exception("Layer " + self.name + " is already compiled!")
+
+        self.output = tf.squared_difference(self.input_layers[0].get_output(), self.input_layers[1].get_output(), name=(network.name + "_" + self.name))
+        self.parameters = []
+
+    def copy(self, new_name, input_layers):
+        return SquaredDifferenceLayer(new_name, input_layers)
+
+
+class SumLayer(Layer):
+    def __init__(self, name, input_layer):
+        Layer.__init__(self, name)
+        self.size = 1
+        self.input_layers = [input_layer]
+
+    def get_parameter_count(self):
+        return 0
+
+    def compile(self, network):
+        if self.output is not None:
+            raise Exception("Layer " + self.name + " is already compiled!")
+
+        self.output = tf.reduce_sum(self.input_layers[0].get_output(), axis=1, keep_dims=True, name=(network.name + "_" + self.name))
+        self.parameters = []
+
+    def copy(self, new_name, input_layers):
+        return SumLayer(new_name, self.input_layers[0])
+
+
 class ScalarMultiplyLayer(Layer):
     def __init__(self, name, input_layer, scalar):
         Layer.__init__(self, name)
