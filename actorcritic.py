@@ -30,7 +30,7 @@ def create_actor_model_critic_network(name, actor_network, model_network, reward
 
     for step in range(forward_steps):
         actor = actor_network.copy(name + "_actor_" + str(step), reuse_parameters=True)
-        actor.set_input_layer(0, state_input)
+        actor.set_input_layer(0, current_state)
         actors.append(actor)
         action_pred = actor.get_output_layer()
 
@@ -39,24 +39,24 @@ def create_actor_model_critic_network(name, actor_network, model_network, reward
             value.set_input_layer(0, current_state)
             values.append(value)
 
+        reward = reward_network.copy(name + "_reward_" + str(step), reuse_parameters=True)
+        reward.set_input_layer(0, current_state)
+        reward.set_input_layer(1, action_pred)
+        rewards.append(reward)
+        reward_pred = reward.get_output_layer()
+
         model = model_network.copy(name + "_model_" + str(step), reuse_parameters=True)
-        model.set_input_layer(0, state_input)
+        model.set_input_layer(0, current_state)
         model.set_input_layer(1, action_pred)
         models.append(model)
         next_state_pred = model.get_output_layer()
         current_state = next_state_pred
 
-        reward = reward_network.copy(name + "_reward_" + str(step), reuse_parameters=True)
-        reward.set_input_layer(0, state_input)
-        reward.set_input_layer(1, action_pred)
-        rewards.append(reward)
-        reward_pred = reward.get_output_layer()
-
         if step == 0:
             discounted_rewards_sum_pred = reward_pred
         else:
             discounted_reward_pred = ScalarMultiplyLayer("discounted_reward_" + str(step), reward_pred,
-                                                         pow(discount_factor, step + 1))
+                                                         pow(discount_factor, step))
             discounted_rewards_sum_pred = AdditionLayer("discounted_rewards_sum_" + str(step),
                                                         [discounted_rewards_sum_pred, discounted_reward_pred])
 
