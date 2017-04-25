@@ -31,7 +31,8 @@ class Experiment:
 
         self.frames = []
 
-        os.mkdir(self.path)
+        if not os.path.exists(self.path):
+            os.mkdir(self.path)
         f = open(self.path + "/settings.txt", "w+")
         pprint.pprint(self.settings, f)
         f.close()
