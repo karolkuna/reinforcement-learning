@@ -8,7 +8,27 @@ from optimizers import SquaredLossOptimizer, MaxOutputOptimizer
 import actorcritic as ac
 
 class DeepMLAC:
-    def __init__(self, actor_network, model_network, reward_network, value_network, forward_steps=1, discount_factor=0.9, trace_decay=0.9, actor_tf_optimizer=tf.train.AdamOptimizer(0.0001), model_tf_optimizer=tf.train.AdamOptimizer(0.001), reward_tf_optimizer=tf.train.AdamOptimizer(0.001), value_tf_optimizer=tf.train.AdamOptimizer(0.001),  actor_target_approach_rate=0.99, value_target_approach_rate=0.99):
+    def __init__(
+            self,
+            actor_network,
+            model_network,
+            reward_network,
+            value_network,
+            forward_steps=1,
+            discount_factor=0.9,
+            trace_decay=0.9,
+            actor_tf_optimizer=tf.train.AdamOptimizer(0.0001),
+            model_tf_optimizer=tf.train.AdamOptimizer(0.001),
+            reward_tf_optimizer=tf.train.AdamOptimizer(0.001),
+            value_tf_optimizer=tf.train.AdamOptimizer(0.001),
+            actor_l2=None,
+            model_l2=None,
+            reward_l2=None,
+            value_l2=None,
+            actor_target_approach_rate=0.99,
+            value_target_approach_rate=0.99,
+            summary_writer=None
+    ):
         if forward_steps < 1:
             raise Exception("At least one forward step has to be executed!")
 
@@ -24,24 +44,30 @@ class DeepMLAC:
         self.actor_target_network = TargetNeuralNetwork(actor_network.name + "_target", actor_network, actor_target_approach_rate)
 
         self.model_network = model_network
-        self.model_optimizer = SquaredLossOptimizer(model_network, model_tf_optimizer)
+        self.model_optimizer = SquaredLossOptimizer(
+            model_network, model_tf_optimizer, model_network.get_parameters(), l2=model_l2, summary_writer=summary_writer
+        )
 
         self.reward_network = reward_network
-        self.reward_optimizer = SquaredLossOptimizer(reward_network, reward_tf_optimizer)
+        self.reward_optimizer = SquaredLossOptimizer(
+            reward_network, reward_tf_optimizer, reward_network.get_parameters(), l2=reward_l2, summary_writer=summary_writer
+        )
 
         self.value_network = value_network
         self.value_target_network = TargetNeuralNetwork(value_network.name + "_target", value_network, value_target_approach_rate)
-        self.value_optimizer = SquaredLossOptimizer(value_network, value_tf_optimizer)
+        self.value_optimizer = SquaredLossOptimizer(
+            value_network, value_tf_optimizer, value_network.get_parameters(), l2=value_l2, summary_writer=summary_writer
+        )
 
         self.actor_ac_network, _actors, _models, _rewards, _values = ac.create_actor_model_critic_network(
-            "Actor_AC", actor_network, model_network, reward_network, self.value_target_network, self.discount_factor, 1, False # TODO: should actor learn from multiple forward steps too?
+            "Actor_AC", actor_network, model_network, reward_network, self.value_target_network, self.discount_factor, 1, False
         )
         self.value_ac_network, _actors, self.value_ac_models, self.value_ac_rewards, self.value_ac_values = ac.create_actor_model_critic_network(
             "Value_AC", self.actor_target_network, model_network, reward_network, self.value_target_network, self.discount_factor, forward_steps, True
         )
 
         self.actor_optimizer = MaxOutputOptimizer(
-            self.actor_ac_network, actor_tf_optimizer, actor_network.get_parameters()
+            self.actor_ac_network, actor_tf_optimizer, actor_network.get_parameters(), actor_l2
         )
 
         self.td_error_network = ac.create_model_based_td_error_network("TD_error", self.actor_target_network,
@@ -97,7 +123,7 @@ class DeepMLAC:
             current_state = state_batch[b]
             for step in xrange(self.forward_steps):
                 value_state_batch.append(current_state)
-                value_target_batch.append(value_outputs[step][b] + value_delta[step])
+                value_target_batch.append(value_outputs[step][b] + value_deltas[step])
                 current_state = model_outputs[step]
 
         value_target_batch = np.resize(value_target_batch, [batch_size * self.forward_steps, 1])

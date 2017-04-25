@@ -3,6 +3,7 @@
 import tensorflow as tf
 import uuid
 from math import sqrt
+from parameter import Parameter
 
 class Layer:
     def __init__(self, name, **kwargs):
@@ -98,10 +99,10 @@ class FullyConnectedLayer(Layer):
                                  name=(network.name + "_" + self.name + "_W"))
             self.b = tf.Variable(tf.random_normal([self.size], mean=0.0, stddev=self.bias_init_stddev),
                                  name=(network.name + "_" + self.name + "_b"))
-            self.parameters = [self.W, self.b]
+            self.parameters = [Parameter(self.W, trainable=True, regularizable=True), Parameter(self.b)]
         else:
-            self.W = self.parameters[0]
-            self.b = self.parameters[1]
+            self.W = self.parameters[0].tf_variable
+            self.b = self.parameters[1].tf_variable
 
         self.output = self.activation_fn(tf.matmul(self.input_layers[0].get_output(), self.W) + self.b, name=(network.name + "_" + self.name))
 
@@ -302,11 +303,11 @@ class BatchNormalizationLayer(Layer):
         if self.parameters is None:
             self.moving_mean = tf.Variable(tf.constant(self.moving_mean_init, shape=[self.size]), name=(network.name + "_" + self.name + "_moving_mean"), trainable=False)
             self.moving_variance = tf.Variable(tf.constant(self.moving_variance_init, shape=[self.size]), name=(network.name + "_" + self.name + "_moving_variance"), trainable=False)
-            self.parameters = [self.moving_mean, self.moving_variance]
+            self.parameters = [Parameter(self.moving_mean, trainable=False), Parameter(self.moving_variance, trainable=False)]
             self.is_parameters_owner = True
         else:
-            self.moving_mean = self.parameters[0]
-            self.moving_variance = self.parameters[1]
+            self.moving_mean = self.parameters[0].tf_variable
+            self.moving_variance = self.parameters[1].tf_variable
             self.is_parameters_owner = False
 
         self.batch_mean, self.batch_variance = tf.nn.moments(self.input_layers[0].get_output(), axes=[0], name=(network.name + "_" + self.name + "_moments")) # TODO: use axes=[0,1,2] for image inputs

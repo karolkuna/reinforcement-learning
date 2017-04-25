@@ -2,6 +2,7 @@
 
 import tensorflow as tf
 from layers import InputLayer
+from parameter import Parameter
 
 
 class INeuralNetwork:
@@ -192,8 +193,8 @@ class TargetNeuralNetwork(INeuralNetwork):
             raise Exception("Cannot create a target network from uncompiled source network!")
 
         self.exponential_ma = tf.train.ExponentialMovingAverage(decay=approach_rate)
-        self.approach_parameters_op = self.exponential_ma.apply(source_network.get_parameters())
-        self.target_parameters = [self.exponential_ma.average(par) for par in source_network.get_parameters()]
+        self.approach_parameters_op = self.exponential_ma.apply([par.tf_variable for par in source_network.get_parameters()])
+        self.target_parameters = [Parameter(self.exponential_ma.average(par.tf_variable), trainable=False) for par in source_network.get_parameters()]
         self.target_network = source_network.copy(name)
         self.target_network.set_parameters(self.target_parameters)
         self.target_network.compile(self.target_network.get_output_layer())
