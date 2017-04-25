@@ -3,8 +3,9 @@ import numpy as np
 import replaybuffer as rb
 
 class ExperienceReplay:
-    def __init__(self, agent, max_size):
+    def __init__(self, agent, environment, max_size):
         self.agent = agent
+        self.environment = environment
         self.max_size = max_size
         self.replay_buffer = rb.ReplayBuffer(max_size, agent.state_dim, agent.action_dim)
 
@@ -22,8 +23,9 @@ class ExperienceReplay:
             self.agent.train(state_batch, action_batch, reward_batch, next_state_batch, done_batch)
 
 class PrioritizedExperienceReplay(ExperienceReplay):
-    def __init__(self, agent, max_size):
+    def __init__(self, agent, environment, max_size):
         self.agent = agent
+        self.environment = environment
         self.max_size = max_size
         self.replay_buffer = rb.PrioritizedReplayBuffer(max_size, agent.state_dim, agent.action_dim, parallel=True)
         self.last_td_error = 0
@@ -48,8 +50,9 @@ class PrioritizedExperienceReplay(ExperienceReplay):
         return self.last_td_error
 
 class ModelBasedPrioritizedExperienceReplay(ExperienceReplay):
-    def __init__(self, agent, max_size):
+    def __init__(self, agent, environment, max_size):
         self.agent = agent
+        self.environment = environment
         self.max_size = max_size
         self.replay_buffer = rb.PrioritizedReplayBuffer(max_size, agent.state_dim, agent.action_dim, parallel=True)
         self.model_replay_buffer = rb.PrioritizedReplayBuffer(max_size, agent.state_dim, agent.action_dim, parallel=True)
@@ -72,6 +75,15 @@ class ModelBasedPrioritizedExperienceReplay(ExperienceReplay):
         self.replay_buffer.add(state_vector, None, None, None, None, math.fabs(self.last_td_error))
         self.model_replay_buffer.add(state_vector, action_vector, None, next_state_vector, None, self.last_model_error)
         self.reward_replay_buffer.add(state_vector, action_vector, reward_vector, None, None, self.last_reward_error)
+
+        if done:
+            # add several dummy transitions from end state to itself with zero reward
+            # thanks to this trick, episodic and open-ended environments can be treated in the same way
+            for i in range(10):
+                rnd_action = np.array(self.environment.action_space.sample(), ndmin=1)
+                self.model_replay_buffer.add(next_state_vector, rnd_action, None, next_state_vector, None, 1)
+                self.reward_replay_buffer.add(next_state_vector, rnd_action, np.array(0, ndmin=1), None, None, 1)
+
 
     def update_oldest_priorities(self, count):
         state_batch, action_batch, reward_batch, next_state_batch, done_batch = self.replay_buffer.get_batch_by_ids(range(count))
