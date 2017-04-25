@@ -182,7 +182,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self.priorities[0].prev_priority_sum = 0
         self.priorities[0].priority_sum = self.priorities[0].priority
 
-        for i in xrange(1, self.max_size):
+        for i in xrange(1, len(self.priorities)):
             self.priorities[i].prev_priority_sum = self.priorities[i - 1].priority_sum
             self.priorities[i].priority_sum = self.priorities[i].prev_priority_sum + self.priorities[i].priority
 
