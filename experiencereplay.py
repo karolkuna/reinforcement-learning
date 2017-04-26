@@ -30,13 +30,14 @@ class PrioritizedExperienceReplay(ExperienceReplay):
         self.replay_buffer = rb.PrioritizedReplayBuffer(max_size, agent.state_dim, agent.action_dim, parallel=True)
         self.last_td_error = 0
 
-    def add_experience(self, state, action, reward, next_state, done):
+    def add_experience(self, state, action, reward, next_state, done, clip_priority_multiple=25):
         state_vector = np.array(state, ndmin=1)
         action_vector = np.array(action, ndmin=1)
         reward_vector = np.array(reward, ndmin=1)
         next_state_vector = np.array(next_state, ndmin=1)
 
-        self.last_td_error = self.agent.get_td_error(state_vector, action_vector, reward_vector, next_state_vector, done)
+        average_td_error = self.replay_buffer.get_average_priority()
+        self.last_td_error = np.clip(self.agent.get_td_error(state_vector, action_vector, reward_vector, next_state_vector, done), 0, clip_priority_multiple * average_td_error)
         priority = math.fabs(self.last_td_error)
         self.replay_buffer.add(state_vector, action_vector, reward_vector, next_state_vector, done, priority)
 
@@ -61,16 +62,20 @@ class ModelBasedPrioritizedExperienceReplay(ExperienceReplay):
         self.last_model_error = 0
         self.last_reward_error = 0
 
-    def add_experience(self, state, action, reward, next_state, done):
+    def add_experience(self, state, action, reward, next_state, done, clip_priority_multiple=25):
         # make sure all inputs are vectors
         state_vector = np.array(state, ndmin=1)
         action_vector = np.array(action, ndmin=1)
         reward_vector = np.array(reward, ndmin=1)
         next_state_vector = np.array(next_state, ndmin=1)
 
-        self.last_td_error = self.agent.get_td_error(state_vector)
-        self.last_model_error = self.agent.get_model_error(state_vector, action_vector, next_state_vector)
-        self.last_reward_error = self.agent.get_reward_error(state_vector, action_vector, reward_vector)
+        average_td_error = self.replay_buffer.get_average_priority()
+        average_model_error = self.model_replay_buffer.get_average_priority()
+        average_reward_error = self.reward_replay_buffer.get_average_priority()
+
+        self.last_td_error = np.clip(self.agent.get_td_error(state_vector), 0, clip_priority_multiple * average_td_error)
+        self.last_model_error = np.clip(self.agent.get_model_error(state_vector, action_vector, next_state_vector), 0, clip_priority_multiple * average_model_error)
+        self.last_reward_error = np.clip(self.agent.get_reward_error(state_vector, action_vector, reward_vector), 0, clip_priority_multiple * average_reward_error)
 
         self.replay_buffer.add(state_vector, None, None, None, None, math.fabs(self.last_td_error))
         self.model_replay_buffer.add(state_vector, action_vector, None, next_state_vector, None, self.last_model_error)
