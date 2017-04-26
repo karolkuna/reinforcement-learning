@@ -34,7 +34,7 @@ class DeepMLAC:
 
         self.state_dim = actor_network.input_dims[0]
         self.action_dim = actor_network.output_dim
-        self.forward_steps = 1
+        self.forward_steps = forward_steps
         self.discount_factor = discount_factor
         self.trace_decay = trace_decay
         self.actor_target_approach_rate = actor_target_approach_rate
@@ -124,7 +124,7 @@ class DeepMLAC:
             for step in xrange(self.forward_steps):
                 value_state_batch.append(current_state)
                 value_target_batch.append(value_outputs[step][b] + value_deltas[step])
-                current_state = model_outputs[step]
+                current_state = model_outputs[step][b]
 
         value_target_batch = np.resize(value_target_batch, [batch_size * self.forward_steps, 1])
 
