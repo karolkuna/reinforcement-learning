@@ -126,6 +126,13 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         return to_id
 
+    def get_average_priority(self):
+        if len(self.priorities) == 0:
+            return 1
+        else:
+            total = self.priorities[0].prev_priority_sum * 0.5 + self.priorities[-1].priority_sum * 0.5
+            return total / len(self.priorities)
+
 
     def get_batch(self, batch_size, proportional_to_priorities=True, decay_old_samples_priority=False):
         """
