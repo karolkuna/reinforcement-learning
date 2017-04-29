@@ -5,7 +5,7 @@ from neuralnetwork import NeuralNetwork
 from layers import *
 
 
-def fully_connected(name, session, input_dims, layer_dims, output_dim, activation_fn, output_bounds=None, batch_norm=False):
+def fully_connected(name, session, input_dims, layer_dims, output_dim, activation_fn, output_bounds=None, batch_norm=False, output_activation_fn=tf.identity):
     network = NeuralNetwork(name, session, input_dims)
     if len(input_dims) == 1:
         prev_layer = network.get_input_layer(0)
@@ -25,6 +25,7 @@ def fully_connected(name, session, input_dims, layer_dims, output_dim, activatio
         prev_layer = bn
 
     output_layer = FullyConnectedLayer("output", output_dim, prev_layer, tf.identity)
+    output_layer = FullyConnectedLayer("output", output_dim, prev_layer, output_activation_fn)
     if output_bounds is not None:
         output_layer = BoundingLayer("bounding", output_layer, output_bounds.low, output_bounds.high)
 
