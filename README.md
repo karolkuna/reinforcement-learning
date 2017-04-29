@@ -1,4 +1,7 @@
-# reinforcement-learning
+This is an open source project built for experimenting with reinforcement learning algorithms in environments with continuous action domain (e.g. robot control tasks) from OpenAI gym. It is a part of my Master's thesis focusing on model-based deep reinforcement learning.
+
+# Deep Model-Learning Actor-Critic
+DMLAC is a novel model-based off-policy deep reinforcement learning algorithm. It is designed to work in deterministic environments with continuous space and action domains.
 
 # Installation
 (Tested with Python 2.7.12 + Ubuntu 16.04 + TensorFlow 1.0 + CUDA 8.0)
