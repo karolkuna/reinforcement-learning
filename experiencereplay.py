@@ -2,12 +2,14 @@ import math
 import numpy as np
 import replaybuffer as rb
 
+
 class ExperienceReplay:
-    def __init__(self, agent, environment, max_size):
+    def __init__(self, agent, environment, max_size, episodic=True):
         self.agent = agent
         self.environment = environment
         self.max_size = max_size
         self.replay_buffer = rb.ReplayBuffer(max_size, agent.state_dim, agent.action_dim)
+        self.episodic = episodic
 
     def add_experience(self, state, action, reward, next_state, done):
         state_vector = np.array(state, ndmin=1)
@@ -22,13 +24,15 @@ class ExperienceReplay:
             state_batch, action_batch, reward_batch, next_state_batch, done_batch = self.replay_buffer.get_batch(batch_size)
             self.agent.train(state_batch, action_batch, reward_batch, next_state_batch, done_batch)
 
-class PrioritizedExperienceReplay(ExperienceReplay):
-    def __init__(self, agent, environment, max_size):
+
+class PrioritizedExperienceReplay:
+    def __init__(self, agent, environment, max_size, episodic):
         self.agent = agent
         self.environment = environment
         self.max_size = max_size
         self.replay_buffer = rb.PrioritizedReplayBuffer(max_size, agent.state_dim, agent.action_dim, parallel=True)
         self.last_td_error = 0
+        self.episodic = episodic
 
     def add_experience(self, state, action, reward, next_state, done, clip_priority_multiple=25):
         state_vector = np.array(state, ndmin=1)
@@ -50,11 +54,13 @@ class PrioritizedExperienceReplay(ExperienceReplay):
     def get_last_td_error(self):
         return self.last_td_error
 
-class ModelBasedPrioritizedExperienceReplay(ExperienceReplay):
-    def __init__(self, agent, environment, max_size):
+
+class ModelBasedPrioritizedExperienceReplay():
+    def __init__(self, agent, environment, max_size, episodic):
         self.agent = agent
         self.environment = environment
         self.max_size = max_size
+        self.episodic = episodic
         self.replay_buffer = rb.PrioritizedReplayBuffer(max_size, agent.state_dim, agent.action_dim, parallel=True)
         self.model_replay_buffer = rb.PrioritizedReplayBuffer(max_size, agent.state_dim, agent.action_dim, parallel=True)
         self.reward_replay_buffer = rb.PrioritizedReplayBuffer(max_size, agent.state_dim, agent.action_dim, parallel=True)
@@ -81,7 +87,7 @@ class ModelBasedPrioritizedExperienceReplay(ExperienceReplay):
         self.model_replay_buffer.add(state_vector, action_vector, None, next_state_vector, None, self.last_model_error)
         self.reward_replay_buffer.add(state_vector, action_vector, reward_vector, None, None, self.last_reward_error)
 
-        if done:
+        if done and self.episodic:
             # add several dummy transitions from end state to itself with zero reward
             # thanks to this trick, episodic and open-ended environments can be treated in the same way
             for i in range(10):
