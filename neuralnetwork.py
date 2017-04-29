@@ -140,13 +140,19 @@ class NeuralNetwork(INeuralNetwork):
             raise Exception("Cannot make a copy of uncompiled network!")
 
         new_network = NeuralNetwork(new_name, self.session, self.input_dims)
-        for layer in new_network.input_layers:
-            new_network.layers.append(layer)
 
         for layer_id, layer in enumerate(self.layers):
-            if layer_id < len(self.input_layers):
-                continue  # input layers are already created
-            input_layers =[new_network.layers[i] for i in self.connections[layer_id]]
+            is_input = False
+            for input_id, input_layer in enumerate(self.input_layers):
+                if layer == input_layer:
+                    is_input = True
+                    new_network.layers.append(new_network.input_layers[input_id])
+                    break
+
+            if is_input:
+                continue
+
+            input_layers = [new_network.layers[i] for i in self.connections[layer_id]]
             layer_copy = layer.copy(layer.name, input_layers)
             new_network.layers.append(layer_copy)
             if layer == self.output_layer:
