@@ -31,7 +31,9 @@ class EpsilonGreedyStrategy(IExplorationStrategy):
 class OUStrategy(IExplorationStrategy):
     def __init__(self, agent, environment, seed=None, mu=0, theta=0.15, sigma=0.2):
         IExplorationStrategy.__init__(self, agent, environment, seed)
-        self.ou_noise = ounoise.OUNoise(environment.action_space.shape[0], mu=mu, theta=theta, sigma=sigma, seed=seed)
+        self.ou_noise = ounoise.OUNoise(
+            environment.action_space.shape[0], mu=mu, theta=theta, sigma=sigma, seed=seed,
+            bounds=self.environment.action_space)
 
     def action(self, state, noise_scale):
         action = self.agent.action(state)

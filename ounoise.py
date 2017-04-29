@@ -10,12 +10,13 @@ import numpy.random as nr
 
 
 class OUNoise:
-    def __init__(self, action_dimension, mu=0, theta=0.15, sigma=0.2, seed=None):
+    def __init__(self, action_dimension, mu=0, theta=0.15, sigma=0.2, seed=None, bounds=None):
         self.action_dimension = action_dimension
         self.mu = mu
         self.theta = theta
         self.sigma = sigma
         self.state = np.ones(self.action_dimension) * self.mu
+        self.bounds = bounds
         self.reset()
         nr.seed(seed)
 
@@ -26,4 +27,8 @@ class OUNoise:
         x = self.state
         dx = self.theta * (self.mu - x) + self.sigma * nr.randn(len(x))
         self.state = x + dx
+
+        if self.bounds is not None:
+            self.state = np.clip(self.state, self.bounds.low, self.bounds.high)
+
         return self.state
