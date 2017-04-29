@@ -8,7 +8,7 @@ from movingaverage import MovingAverage
 import imageio
 
 class Experiment:
-    def __init__(self, path, session, environment, settings, render_environment=False, render_frequency=60):
+    def __init__(self, path, session, environment, settings, render_environment, render_frequency, render_start):
         self.path = path
         self.session = session
         self.saver = tf.train.Saver()
@@ -16,6 +16,7 @@ class Experiment:
         self.settings = settings
         self.render_environment = render_environment
         self.render_frequency = render_frequency
+        self.render_start = render_start
 
         self.reward_100ma = MovingAverage(100)
         self.reward_history = []
@@ -28,6 +29,9 @@ class Experiment:
         self.episode_reward_history = []
         self.episode_duration_history = []
         self.episode_history = []
+
+        self.last_episode_reward = 0
+        self.last_episode_duration = 0
 
         self.frames = []
 
@@ -55,14 +59,18 @@ class Experiment:
         self.episode_duration += 1
 
         if done:
-            print("Episode over. Total reward: {}. Solved in {} steps.".format(self.episode_reward, self.episode_duration))
             self.episode_reward_history.append(self.episode_reward)
             self.episode_duration_history.append(self.episode_duration)
+            self.last_episode_reward = self.episode_reward
+            self.last_episode_duration = self.episode_duration
             self.episode_reward = 0
             self.episode_duration = 0
 
-        if self.render_environment and t % self.render_frequency == 0:
-            self.frames.append(self.environment.render(mode = 'rgb_array'))
+        if self.render_environment and t > self.render_start and t % self.render_frequency == 0:
+            self.frames.append(self.environment.render(mode='rgb_array'))
+
+    def print_last_episode_info(self):
+        print("Total episode reward: {}. Finished in {} steps.".format(self.last_episode_reward, self.last_episode_duration))
 
     def print_all_tf_variables(self):
         variables = tf.trainable_variables()
