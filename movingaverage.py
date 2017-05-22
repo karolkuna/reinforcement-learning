@@ -17,3 +17,8 @@ class MovingAverage:
 	def get_average(self):
 		#return self.sum # TODO: fix it
 		return self.window.sum() / self.window_length
+
+	def reset(self):
+		self.t = 0
+		self.window = np.zeros(self.window_length)
+		self.sum = 0
