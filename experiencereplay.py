@@ -25,10 +25,10 @@ class ExperienceReplay:
             self.agent.train(state_batch, action_batch, reward_batch, next_state_batch, done_batch)
 
 
-class PrioritizedExperienceReplay:
-    def __init__(self, agent, environment, max_size, episodic):
-        self.agent = agent
+class PrioritizedExperienceReplay(ExperienceReplay):
+    def __init__(self, agent, environment, max_size, episodic=True):
         self.environment = environment
+        self.agent = agent
         self.max_size = max_size
         self.replay_buffer = rb.PrioritizedReplayBuffer(max_size, agent.state_dim, agent.action_dim, parallel=True)
         self.last_td_error = 0
