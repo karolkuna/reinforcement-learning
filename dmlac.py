@@ -7,7 +7,7 @@ from neuralnetwork import NeuralNetwork, TargetNeuralNetwork
 from optimizers import SquaredLossOptimizer, MaxOutputOptimizer
 import actorcritic as ac
 
-class DeepMLAC:
+class DMLAC:
     def __init__(
             self,
             actor_network,
@@ -60,7 +60,7 @@ class DeepMLAC:
         )
 
         self.actor_ac_network, _actors, _models, _rewards, _values = ac.create_actor_model_critic_network(
-            "Actor_AC", actor_network, model_network, reward_network, self.value_target_network, self.discount_factor, 1, False
+            "Actor_AC", actor_network, model_network, reward_network, value_network, self.discount_factor, 1, False
         )
         self.value_ac_network, _actors, self.value_ac_models, self.value_ac_rewards, self.value_ac_values = ac.create_actor_model_critic_network(
             "Value_AC", self.actor_target_network, model_network, reward_network, self.value_target_network, self.discount_factor, forward_steps, True
@@ -98,37 +98,33 @@ class DeepMLAC:
         batch_size = len(state_batch)
 
         fetches = self.value_ac_network.custom_fetch([state_batch], fetch_layers=[
-            [n.get_output_layer().get_output() for n in self.value_ac_models],
+            #[n.get_output_layer().get_output() for n in self.value_ac_models],
             [n.get_output_layer().get_output() for n in self.value_ac_rewards],
             [n.get_output_layer().get_output() for n in self.value_ac_values]
         ])
 
-        model_outputs = fetches[0]
-        reward_outputs = fetches[1]
-        value_outputs = fetches[2]
+        #model_outputs = fetches[0]
+        reward_outputs = fetches[0]
+        value_outputs = fetches[1]
 
-        value_state_batch = []
         value_target_batch = []
 
+        return_normalization_weight = (1.0 - self.trace_decay) / (1.0 - pow(self.trace_decay, self.forward_steps))
+
         for b in xrange(batch_size):
-            value_deltas = [0] * self.forward_steps
+            return_target = 0
+            discounted_rewards_sum = 0
 
             for step in xrange(self.forward_steps):
-                value_delta = reward_outputs[step][b] + self.discount_factor * value_outputs[step + 1][b] - value_outputs[step][b]
-                value_deltas[step] += value_delta
+                discounted_rewards_sum += pow(self.discount_factor, step) * reward_outputs[step][b]
+                step_return_target = discounted_rewards_sum + pow(self.discount_factor, step + 1) * value_outputs[step + 1][b]
+                return_target += pow(self.trace_decay, step) * step_return_target
 
-                for t in xrange(step):
-                    value_deltas[t] += pow(self.discount_factor * self.trace_decay, step - t) * value_delta
+            value_target_batch.append(return_normalization_weight * return_target)
 
-            current_state = state_batch[b]
-            for step in xrange(self.forward_steps):
-                value_state_batch.append(current_state)
-                value_target_batch.append(value_outputs[step][b] + value_deltas[step])
-                current_state = model_outputs[step][b]
+        value_target_batch = np.resize(value_target_batch, [batch_size, 1])
 
-        value_target_batch = np.resize(value_target_batch, [batch_size * self.forward_steps, 1])
-
-        self.value_optimizer.train([value_state_batch], value_target_batch)
+        self.value_optimizer.train([state_batch], value_target_batch)
         self.value_target_network.approach_source_parameters()
 
     def action(self, state):
