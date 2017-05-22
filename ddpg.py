@@ -22,7 +22,7 @@ class DDPG:
         self.q_target_network = TargetNeuralNetwork("Q_target", self.q_network, self.q_target_approach_rate)
         self.q_optimizer = SquaredLossOptimizer(q_network, actor_tf_optimizer, q_network.get_parameters(), q_l2)
 
-        self.actor_critic_network, _actor, _critic = create_actor_critic_network("ActorCritic", actor_network, self.q_target_network)
+        self.actor_critic_network, _actor, _critic = create_actor_critic_network("ActorCritic", actor_network, q_network)
         self.actor_optimizer = MaxOutputOptimizer(self.actor_critic_network, q_tf_optimizer, self.actor_network.get_parameters(), actor_l2)
 
         self.actor_network.session.run(tf.global_variables_initializer())
