@@ -32,9 +32,9 @@ def fully_connected(name, session, input_dims, layer_dims, output_dim, activatio
     return network
 
 
-def fully_connected_with_input_encoding(name, session, input_dims, encoding_dim, layer_dims, output_dim, activation_fn, output_bounds=None, batch_norm=False, output_activation_fn=tf.identity):
+def fully_connected_with_input_embedding(name, session, input_dims, encoding_dim, layer_dims, output_dim, activation_fn, output_bounds=None, batch_norm=False, output_activation_fn=tf.identity):
     network = NeuralNetwork(name, session, input_dims)
-    encoding_layers = []
+    embedding_layers = []
     for input_id, input_dim in enumerate(input_dims):
         if batch_norm:
             input_layer = network.get_input_layer(input_id)
@@ -42,9 +42,9 @@ def fully_connected_with_input_encoding(name, session, input_dims, encoding_dim,
         else:
             prev_layer = network.get_input_layer(input_id)
         encoding_layer = FullyConnectedLayer("encoding_" + str(input_id) + "_" + str(encoding_dim), encoding_dim, prev_layer, activation_fn)
-        encoding_layers.append(encoding_layer)
+        embedding_layers.append(encoding_layer)
 
-    prev_layer = ConcatLayer("concat_inputs", encoding_layers)
+    prev_layer = ConcatLayer("concat_inputs", embedding_layers)
 
     for i, size in enumerate(layer_dims):
         if batch_norm:
